@@ -1,0 +1,5 @@
+# Don't sync folder NoSync
+No_sync/
+
+# Don't sync secrets
+Secrets/
