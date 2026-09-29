@@ -5,7 +5,7 @@ No_sync/
 Secrets/
 
 # Don't sync exercises
-Exercises/
+exercises/
 
 # Don't sync the venv
 .venv/
