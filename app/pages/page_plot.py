@@ -1,7 +1,7 @@
 import streamlit as st
 import plotly.express as px
 
-from app.utils.data import load_reservoir_data
+from utils.data import load_reservoir_data
 
 st.title("Reservoir Data Plot")
 st.write("This page allows you to visualize reservoir data through interactive plots.")

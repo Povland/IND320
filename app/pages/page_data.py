@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from app.utils.data import load_reservoir_data
+from utils.data import load_reservoir_data
 
 st.title("Reservoir Data")
 st.write("This is the data page for visualizing reservoir information.")
