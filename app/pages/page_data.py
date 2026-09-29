@@ -25,6 +25,7 @@ for column in reservoir_data.columns:
 st.dataframe(
     overview_data,
     use_container_width=True,
+    hide_index=True,
     column_config={
         "Column": st.column_config.LineChartColumn(
             "Column",

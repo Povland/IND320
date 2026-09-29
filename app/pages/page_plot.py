@@ -13,11 +13,15 @@ if reservoir_data.empty:
     st.warning("Reservoir data is not available. Please check the data source.")
     st.stop()
 
+# Get numeric columns
+numeric_columns = reservoir_data.select_dtypes(
+    include="number"
+    ).columns.tolist()
+
 # Select column to plot
-columns = reservoir_data.columns.tolist()
 selected_column = st.selectbox(
     "Select a column to plot:",
-    ["All columns"] + columns
+    ["All columns"] + numeric_columns
     )
 
 # Select end date for the plot
@@ -38,7 +42,7 @@ if selected_column == "All columns":
     fig = px.line(
         plot_data,
         x=plot_data.index,
-        y=plot_data.columns,
+        y=numeric_columns,
         title="Reservoir Data Over Time",
         labels={"x": "Date", "y": "Value"},
     )
@@ -53,4 +57,7 @@ else:
     )
 
 # Display the plot
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(
+    fig, 
+    use_container_width=True
+    )
