@@ -3,3 +3,9 @@ No_sync/
 
 # Don't sync secrets
 Secrets/
+
+# Don't sync exercises
+exercises/
+
+# Don't sync the venv
+.venv/
