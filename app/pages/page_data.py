@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from app.utils.data import load_reservoir_data
+from utils.data import load_reservoir_data
 
 st.title("Reservoir Data")
 st.write("This is the data page for visualizing reservoir information.")
@@ -25,6 +25,7 @@ for column in reservoir_data.columns:
 st.dataframe(
     overview_data,
     use_container_width=True,
+    hide_index=True,
     column_config={
         "Column": st.column_config.LineChartColumn(
             "Column",

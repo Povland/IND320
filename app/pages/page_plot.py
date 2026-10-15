@@ -1,7 +1,7 @@
 import streamlit as st
 import plotly.express as px
 
-from app.utils.data import load_reservoir_data
+from utils.data import load_reservoir_data
 
 st.title("Reservoir Data Plot")
 st.write("This page allows you to visualize reservoir data through interactive plots.")
@@ -13,24 +13,35 @@ if reservoir_data.empty:
     st.warning("Reservoir data is not available. Please check the data source.")
     st.stop()
 
+# Get numeric columns
+plot_columns = [
+    "filling_degree",
+    "capacity_TWh",
+    "filling_TWh",
+    "filling_degree_last_week",
+    "filling_degree_change"
+]
+
 # Select column to plot
-columns = reservoir_data.columns.tolist()
 selected_column = st.selectbox(
     "Select a column to plot:",
-    ["All columns"] + columns
+    ["All columns"] + plot_columns
     )
 
-# Select end date for the plot
+# Select period for the plot
 dates = reservoir_data.index.tolist()
-selected_date = st.select_slider(
+selected_period = st.select_slider(
     "Select a date range for the plot:",
     options = dates,
-    value = dates[0],
+    value = (dates[0], dates[-1]),
     format_func = lambda date: date.strftime("%Y-%m-%d")
 )
+start_date, end_date = selected_period
 
+# Filter the data based on the selected period
 plot_data = reservoir_data.loc[
-    reservoir_data.index <= selected_date
+    start_date:end_date,
+    plot_columns
 ]
 
 # Create the plot
@@ -38,7 +49,7 @@ if selected_column == "All columns":
     fig = px.line(
         plot_data,
         x=plot_data.index,
-        y=plot_data.columns,
+        y=plot_columns,
         title="Reservoir Data Over Time",
         labels={"x": "Date", "y": "Value"},
     )
@@ -53,4 +64,7 @@ else:
     )
 
 # Display the plot
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(
+    fig, 
+    use_container_width=True
+    )

@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-DATA_PATH = Path(__file__).resolve().parent[2] / "data" / "reservoirs.csv"
+DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "reservoirs.csv"
 
 @st.cache_data
 # To cashe the data loading function, we can use the @st.cache_data decorator
