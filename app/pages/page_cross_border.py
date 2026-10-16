@@ -27,9 +27,9 @@ if not connections:
 
 left, right = st.columns(2)
 
-# Left side: connection (radio buttons) and year (dropdown), with a pie chart of the year's total
+# Left side: connection (radio buttons, as a list) and year (dropdown), with a pie chart of the year's total
 with left:
-    connection = st.radio("Connection", options=connections, horizontal=True)
+    connection = st.radio("Connection", options=connections)
     years = load_years(connection)
     # 2025 is the default, since it is the only full year in the data
     year = st.selectbox("Year", options=years, index=years.index(2025) if 2025 in years else len(years) - 1)
@@ -58,12 +58,19 @@ with left:
 
 # Right side: which months to include (pills), with a line plot of the hourly flow
 with right:
+    # Small style change: shows the month pills as a list going down instead of side by side.
+    # Targets the element that holds the pill buttons inside Streamlit's pills widget
+    st.markdown(
+        "<style>.stButtonGroup div:has(> button) { flex-direction: column; align-items: flex-start; }</style>",
+        unsafe_allow_html=True,
+    )
+
     chosen_months = st.pills(
         "Months",
         options=months_in_year,
         selection_mode="multi",
         default=[months_in_year[0]],
-        format_func=lambda month: calendar.month_abbr[month],
+        format_func=lambda month: calendar.month_name[month],   # full names: January, February, ...
         key=f"months_{connection}_{year}",   # own selection per connection and year
     )
 
