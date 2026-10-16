@@ -1,55 +1,63 @@
 import pandas as pd
 import streamlit as st
 
-from utils.data import load_reservoir_data
+from utils.controls import AREA_TYPES, area_number_selector, area_type_selector, period_selector
+from utils.data import available_area_numbers, available_dates, load_reservoir_data, load_reservoir_period
 
 st.title("Reservoir Data")
-st.write("Weekly reservoir statistics from NVE's API. One row per variable, showing the first month of data.")
+st.write(
+    "Weekly reservoir statistics from NVE. Choose the type of area and the period. "
+    "Each row is one area, and each chart shows how the value developed over the chosen period."
+)
 
-reservoir_data = load_reservoir_data()
-if reservoir_data.empty:
+if load_reservoir_data().empty:
     st.warning("Reservoir data is not available. Please check the data source.")
     st.stop()
 
-# Choose area, since each date has one row per area
-areas = (
-    reservoir_data[["area_type", "area_nr"]]
-    .drop_duplicates()
-    .sort_values(["area_type", "area_nr"])
-)
-area_labels = [f"{t} {n}" for t, n in areas.itertuples(index=False)]
-selected_area = st.selectbox("Area:", area_labels)
-area_type, area_nr = selected_area.split()
+# Controls at the top of the page (shared with the Plot page). Area type and areas on the left, period on the right
+left, right = st.columns([1, 2])
+with left:
+    area_type = area_type_selector("data")
+    area_numbers = area_number_selector("data", area_type, available_area_numbers(area_type))
+with right:
+    start, end = period_selector("data", available_dates())
 
-area_data = reservoir_data[
-    (reservoir_data["area_type"] == area_type)
-    & (reservoir_data["area_nr"] == int(area_nr))
-]
+if not area_numbers:
+    st.info("No areas selected. Choose one or more areas above.")
+    st.stop()
 
-# First month of data for the selected area
-first_date = area_data.index.min()
-first_month = area_data.loc[first_date : first_date + pd.DateOffset(months=1)]
+data = load_reservoir_period(area_type, area_numbers, start, end)
 
-# Only numeric columns can be drawn as line charts
-numeric_columns = first_month.select_dtypes("number").columns.drop(["area_nr", "iso_aar", "iso_week"])
+# The columns shown as line charts, with readable names
+CHART_COLUMNS = {
+    "filling_degree": "Filling degree",
+    "filling_TWh": "Filling (TWh)",
+    "capacity_TWh": "Capacity (TWh)",
+    "filling_degree_change": "Change from last week",
+}
 
-overview = pd.DataFrame({
-    "Column": numeric_columns,
-    "Data": [first_month[column].tolist() for column in numeric_columns],
-})
+# One row per area number, where each cell holds the values over time for one variable
+rows = []
+for area_nr, area_data in data.groupby("area_nr"):
+    row = {"Area": f"{area_type} {area_nr}"}
+    for column in CHART_COLUMNS:
+        row[column] = area_data[column].tolist()
+    rows.append(row)
 
+st.subheader(f"{AREA_TYPES[area_type]}, {start:%Y-%m-%d} to {end:%Y-%m-%d}")
 st.dataframe(
-    overview,
+    pd.DataFrame(rows),
     width="stretch",
     hide_index=True,
     column_config={
-        "Column": st.column_config.TextColumn(
-            "Column",
-            help="The name of the column in the reservoir data.",
-        ),
-        "Data": st.column_config.LineChartColumn(
-            "Data",
-            help=f"Values from {first_date:%Y-%m-%d} and one month ahead.",
-        ),
+        "Area": st.column_config.TextColumn("Area"),
+        **{
+            column: st.column_config.LineChartColumn(label, help=f"{label} per week in the chosen period.")
+            for column, label in CHART_COLUMNS.items()
+        },
     },
 )
+
+# The underlying numbers, for those who want to look closer
+with st.expander("Show the data as a table"):
+    st.dataframe(data, width="stretch")

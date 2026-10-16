@@ -1,5 +1,7 @@
 import pandas as pd
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE_URL = "https://biapi.nve.no/magasinstatistikk/api/Magasinstatistikk"
 
@@ -20,18 +22,29 @@ COLUMN_NAMES = {
 
 
 def fetch_json(endpoint):
-    """Fetches raw JSON from an endpoint in NVE's Magasinstatistikk API."""
-    response = requests.get(
+    #Fetches raw JSON from an endpoint in NVE's Magasinstatistikk API.
+    #Request waits up to 2 minutes and is retried up to 3 times with increasing pauses.
+
+    retry = Retry(
+        total=3,
+        backoff_factor=2,                          # waits 2, 4, 8 seconds between attempts
+        status_forcelist=[500, 502, 503, 504],     # retry on server errors too
+        allowed_methods=["GET"],
+    )
+    session = requests.Session()
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+
+    response = session.get(
         f"{BASE_URL}/{endpoint}",
         headers={"Accept": "application/json"},
-        timeout=30,
+        timeout=(10, 120),                         # 10 s to connect, 120 s to read
     )
     response.raise_for_status()
     return response.json()
 
 
 def fetch_reservoir_data():
-    """Fetches the weekly reservoir statistics, with date_id as a sorted index."""
+    #Fetches the weekly reservoir statistics, with date_id as a sorted index.
     reservoir_data = pd.DataFrame(fetch_json("HentOffentligData")).rename(columns=COLUMN_NAMES)
 
     reservoir_data["date_id"] = pd.to_datetime(reservoir_data["date_id"])
@@ -41,5 +54,5 @@ def fetch_reservoir_data():
 
 
 def fetch_areas():
-    """Fetches the areas (land, elspot, vassdrag) as one table."""
+    #Fetches the areas (land, elspot, vassdrag) as one table.
     return pd.DataFrame(fetch_json("HentOmr%C3%A5der"))
