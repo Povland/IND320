@@ -38,6 +38,7 @@ dependencies = [
     "streamlit",
     "nbstripout",
     "python-dotenv>=1.2.4",
+    "entsoe-py>=0.8.1",
 ]
 
 [dependency-groups]

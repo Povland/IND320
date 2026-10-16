@@ -418,6 +418,21 @@ wheels = [
 ]
 
 [[package]]
+name = "entsoe-py"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "pandas" },
+    { name = "pytz" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/eb/3d96cdfe7efa1f5d152c3f05730bc378457ea20bf3dbcb3cf1db9b4a2583/entsoe_py-0.8.1.tar.gz", hash = "sha256:4c956fc655f7c0c93941ac8577816bc45a31b42d587772b3efceb3fd705cbf84", size = 1600214, upload-time = "2026-09-04T12:59:25.515Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/22/01/ea300895919ea436ca1e3597abbf0e3d5b1f5e331d4b4e50219c6afc4874/entsoe_py-0.8.1-py3-none-any.whl", hash = "sha256:febd5f7f60a9461a4746e52f4b431a8e8efed8b6e57d93efe16dbeab568bc208", size = 1621609, upload-time = "2026-09-04T12:59:23.837Z" },
+]
+
+[[package]]
 name = "et-xmlfile"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -610,6 +625,7 @@ dependencies = [
     { name = "anywidget" },
     { name = "cassandra-driver" },
     { name = "datetime" },
+    { name = "entsoe-py" },
     { name = "flask" },
     { name = "hoggorm" },
     { name = "hoggormplot" },
@@ -654,6 +670,7 @@ requires-dist = [
     { name = "anywidget" },
     { name = "cassandra-driver" },
     { name = "datetime" },
+    { name = "entsoe-py", specifier = ">=0.8.1" },
     { name = "flask" },
     { name = "hoggorm" },
     { name = "hoggormplot" },

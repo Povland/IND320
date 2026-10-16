@@ -54,5 +54,6 @@ def fetch_reservoir_data():
 
 
 def fetch_areas():
-    #Fetches the areas (land, elspot, vassdrag) as one table.
-    return pd.DataFrame(fetch_json("HentOmr%C3%A5der"))
+    groups = fetch_json("HentOmr%C3%A5der")
+    rows = [area for group in groups for area_list in group.values() for area in area_list]
+    return pd.DataFrame(rows)
