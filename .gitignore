@@ -9,3 +9,6 @@ exercises/
 
 # Don't sync the venv
 .venv/
+
+# Don't sync pychache 
+__pycache__/

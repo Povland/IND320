@@ -7,7 +7,7 @@ Philip A. K. Øvland
 
 # Setup
 '''
-uv sync                                                     # installs dependencies and the ind320 package
+uv sync     # installs dependencies and the ind320 package
 docker run --name my_cassandra -p 9042:9042 -d cassandra:latest
 uv run streamlit run app/streamlit_app.py
 
