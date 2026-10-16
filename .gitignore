@@ -15,3 +15,6 @@ __pycache__/
 
 # Don't sync the .streamlit/secrets.toml file
 .streamlit/secrets.toml
+
+# Don't sync the data/entsoe_flows.parquet 
+data/entsoe_flows.parquet

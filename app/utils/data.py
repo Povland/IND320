@@ -85,3 +85,64 @@ def check_mongo_connection():
         return True, db.list_collection_names()
     except Exception as error:   # missing secrets, wrong password, network, IP not allowed in Atlas...
         return False, str(error)
+
+
+# ---------------------------------------------------------------------------------------------
+# Cross-border flows (ENTSO-E), prepared in the notebook with Spark and stored in MongoDB.
+# One document per connection, year, month and direction, with the hours as lists (time, mwh)
+# and the month's total (total_mwh). See notebooks/Oblig2.ipynb.
+# ---------------------------------------------------------------------------------------------
+
+FLOWS_COLLECTION = "crossborder_flows"
+
+
+# All connections in MongoDB, e.g. ["NO_1-SE_3", "NO_2-DE_LU", ...]
+@st.cache_data(ttl=3600)
+def load_connections():
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("connection"))
+
+
+# The years with data for one connection
+@st.cache_data(ttl=3600)
+def load_years(connection):
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("year", {"connection": connection}))
+
+
+# The months with data for one connection in one year (2024 and 2026 are partial years)
+@st.cache_data(ttl=3600)
+def load_months(connection, year):
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("month", {"connection": connection, "year": year}))
+
+
+# Total flow in each direction for one connection in one year, in GWh.
+# MongoDB sums the monthly totals, so only the totals (not the hours) are sent to the app
+@st.cache_data(ttl=3600)
+def load_yearly_totals(connection, year):
+    result = get_mongo_db()[FLOWS_COLLECTION].aggregate([
+        {"$match": {"connection": connection, "year": year}},
+        {"$group": {"_id": "$direction", "total_mwh": {"$sum": "$total_mwh"}}},
+    ])
+    return pd.DataFrame(
+        [{"direction": doc["_id"], "gwh": doc["total_mwh"] / 1000} for doc in result]
+    )
+
+
+# Hourly flow for one connection in the chosen months of one year, one row per hour and direction.
+# The lists in each document are unpacked into rows, and the time is converted to Norwegian time
+@st.cache_data(ttl=3600)
+def load_hourly_flows(connection, year, months):
+    documents = get_mongo_db()[FLOWS_COLLECTION].find(
+        {"connection": connection, "year": year, "month": {"$in": list(months)}},
+        {"_id": 0, "direction": 1, "time": 1, "mwh": 1},
+    )
+    frames = [
+        pd.DataFrame({"time": doc["time"], "mwh": doc["mwh"], "direction": doc["direction"]})
+        for doc in documents
+    ]
+    if not frames:
+        return pd.DataFrame(columns=["time", "mwh", "direction"])
+
+    hourly = pd.concat(frames, ignore_index=True)
+    # MongoDB returns UTC times without time zone info, so they are marked as UTC first
+    hourly["time"] = pd.to_datetime(hourly["time"], utc=True).dt.tz_convert("Europe/Oslo")
+    return hourly.sort_values(["direction", "time"])
