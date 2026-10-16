@@ -1,26 +1,34 @@
+import sys
 from pathlib import Path
 
 import pandas as pd
+import requests
 import streamlit as st
 
-DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "reservoirs.csv"
+# ind320 is installed as a package via uv sync. The fallback covers environments
 
-@st.cache_data
-# To cashe the data loading function, we can use the @st.cache_data decorator
-# This will store the results of the function in a cache, and the function will return whats in the cache
+
+try:
+    from ind320 import nve
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from ind320 import nve
+
+
+@st.cache_data(ttl=3600)
+# Caches the result for one hour, since the data only changes weekly
 def load_reservoir_data():
-    #loads data from csv file
-    reservoir_data = pd.read_csv(DATA_PATH)
+    try:
+        return nve.fetch_reservoir_data()
+    except requests.RequestException as error:
+        st.error(f"Could not fetch data from NVE: {error}")
+        return pd.DataFrame()
 
-    # Renaming headers
-    reservoir_data.columns = ["date_id", "area_type", "area_nr", "iso_aar", "iso_week", "filling_degree", "capacity_TWh", "filling_TWh", "next_publishing_date", "filling_degree_last_week", "filling_degree_change"]
-    
-    # Sets date_id as datetime and sets it as index
-    reservoir_data["date_id"] = pd.to_datetime(reservoir_data["date_id"])
-    reservoir_data = reservoir_data.set_index("date_id")
 
-    # Sorts the dataframe by index (date_id) in ascending order
-    reservoir_data = reservoir_data.sort_index()
-
-    # Returns data
-    return reservoir_data
+@st.cache_data(ttl=24 * 3600)
+def load_areas():
+    try:
+        return nve.fetch_areas()
+    except requests.RequestException as error:
+        st.error(f"Could not fetch areas from NVE: {error}")
+        return pd.DataFrame()
