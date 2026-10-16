@@ -15,9 +15,6 @@ uv run streamlit run app/streamlit_app.py
 
 - Python 3.11 (PySpark 3.5.1 does not support newer versions).
 - Spark needs Java 17. On Windows it also needs `winutils.exe` and `hadoop.dll` (Hadoop 3.3.x) in `C:\hadoop\bin`, with `HADOOP_HOME=C:\hadoop`.
-- Secrets are never pushed to GitHub:
-  - `No_sync/atlas-credentials.env`: `MONGODB_USERNAME`, `MONGODB_PASSWORD`, `MONGODB_URI` (used by the notebook)
-  - `.streamlit/secrets.toml`: `[mongo]` with `uri` and `database` (used by the app locally; pasted into Settings → Secrets on Streamlit Cloud)
 
 ## Links
 
@@ -39,6 +36,7 @@ uv run streamlit run app/streamlit_app.py
 - Cassandra Docker image: https://hub.docker.com/_/cassandra
 - Spark Cassandra Connector: https://github.com/datastax/spark-cassandra-connector
 - winutils for Windows (Hadoop): https://github.com/cdarlint/winutils
+- entsoe-py (ENTSO-E client): https://github.com/EnergieID/entsoe-py
 
 ## Structure
 
