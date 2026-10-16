@@ -1,26 +1,148 @@
+import sys
 from pathlib import Path
 
 import pandas as pd
+import requests
 import streamlit as st
 
-DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "reservoirs.csv"
+from pymongo import MongoClient
 
-@st.cache_data
-# To cashe the data loading function, we can use the @st.cache_data decorator
-# This will store the results of the function in a cache, and the function will return whats in the cache
+# ind320 is installed as a package via uv sync. 
+try:
+    from ind320 import nve
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from ind320 import nve
+
+
+# Caches the result for one hour, since the data only changes weekly.
+# Errors are raised from here instead of returned, so a failed download is NOT cached
+@st.cache_data(ttl=3600, show_spinner="Downloading reservoir data from NVE...")
+def _fetch_reservoir_data():
+    return nve.fetch_reservoir_data()
+
+
+# All reservoir statistics from NVE's API (all areas, all weeks).
+# Shows an error in the app and returns an empty table if the download fails
 def load_reservoir_data():
-    #loads data from csv file
-    reservoir_data = pd.read_csv(DATA_PATH)
+    try:
+        return _fetch_reservoir_data()
+    except requests.RequestException as error:
+        st.error(f"Could not fetch data from NVE: {error}")
+        return pd.DataFrame()
 
-    # Renaming headers
-    reservoir_data.columns = ["date_id", "area_type", "area_nr", "iso_aar", "iso_week", "filling_degree", "capacity_TWh", "filling_TWh", "next_publishing_date", "filling_degree_last_week", "filling_degree_change"]
-    
-    # Sets date_id as datetime and sets it as index
-    reservoir_data["date_id"] = pd.to_datetime(reservoir_data["date_id"])
-    reservoir_data = reservoir_data.set_index("date_id")
 
-    # Sorts the dataframe by index (date_id) in ascending order
-    reservoir_data = reservoir_data.sort_index()
+# All weeks that exist in the data, as dates. Used as options in the period slider
+def available_dates():
+    data = load_reservoir_data()
+    return sorted(set(data.index.date))
 
-    # Returns data
-    return reservoir_data
+
+# The area numbers that exist in the data for one type of area, e.g. [1, 2, 3, 4, 5] for EL
+def available_area_numbers(area_type):
+    data = load_reservoir_data()
+    return sorted(data.loc[data["area_type"] == area_type, "area_nr"].unique().tolist())
+
+
+# Reservoir statistics for the chosen areas of one type (EL, NO or VASS) within the chosen period.
+# NVE's API has no date parameters, so everything is downloaded once (cached above) and the period is cut out here. The slider therefore decides which data the app uses.
+def load_reservoir_period(area_type, area_numbers, start, end):
+    data = load_reservoir_data()
+    if data.empty:
+        return data
+    data = data[(data["area_type"] == area_type) & (data["area_nr"].isin(area_numbers))]
+    return data.loc[pd.Timestamp(start) : pd.Timestamp(end)]
+
+
+# Names and descriptions of the areas in NVE's API, cached for one day.
+# Errors are raised from here instead of returned, so a failed download is NOT cached
+@st.cache_data(ttl=24 * 3600)
+def _fetch_areas():
+    return nve.fetch_areas()
+
+
+def load_areas():
+    try:
+        return _fetch_areas()
+    except requests.RequestException as error:
+        st.error(f"Could not fetch areas from NVE: {error}")
+        return pd.DataFrame()
+
+
+# One shared MongoDB connection for the whole app, using the details in st.secrets["mongo"].
+# cache_resource (not cache_data) is used because a connection should be reused, not copied
+@st.cache_resource
+def get_mongo_db():
+    client = MongoClient(st.secrets["mongo"]["uri"], serverSelectionTimeoutMS=10000)
+    return client[st.secrets["mongo"].get("database", "ind320")]
+
+
+# Pings MongoDB. Returns (True, list of collections) or (False, error message)
+def check_mongo_connection():
+    try:
+        db = get_mongo_db()
+        db.client.admin.command("ping")
+        return True, db.list_collection_names()
+    except Exception as error:   # missing secrets, wrong password, network, IP not allowed in Atlas...
+        return False, str(error)
+
+
+# ---------------------------------------------------------------------------------------------
+# Cross-border flows (ENTSO-E), prepared in the notebook with Spark and stored in MongoDB.
+# One document per connection, year, month and direction, with the hours as lists (time, mwh)
+# and the month's total (total_mwh). See notebooks/Oblig2.ipynb.
+# ---------------------------------------------------------------------------------------------
+
+FLOWS_COLLECTION = "crossborder_flows"
+
+
+# All connections in MongoDB, e.g. ["NO_1-SE_3", "NO_2-DE_LU", ...]
+@st.cache_data(ttl=3600)
+def load_connections():
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("connection"))
+
+
+# The years with data for one connection
+@st.cache_data(ttl=3600)
+def load_years(connection):
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("year", {"connection": connection}))
+
+
+# The months with data for one connection in one year (2024 and 2026 are partial years)
+@st.cache_data(ttl=3600)
+def load_months(connection, year):
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("month", {"connection": connection, "year": year}))
+
+
+# Total flow in each direction for one connection in one year, in GWh.
+# MongoDB sums the monthly totals, so only the totals (not the hours) are sent to the app
+@st.cache_data(ttl=3600)
+def load_yearly_totals(connection, year):
+    result = get_mongo_db()[FLOWS_COLLECTION].aggregate([
+        {"$match": {"connection": connection, "year": year}},
+        {"$group": {"_id": "$direction", "total_mwh": {"$sum": "$total_mwh"}}},
+    ])
+    return pd.DataFrame(
+        [{"direction": doc["_id"], "gwh": doc["total_mwh"] / 1000} for doc in result]
+    )
+
+
+# Hourly flow for one connection in the chosen months of one year, one row per hour and direction.
+# The lists in each document are unpacked into rows, and the time is converted to Norwegian time
+@st.cache_data(ttl=3600)
+def load_hourly_flows(connection, year, months):
+    documents = get_mongo_db()[FLOWS_COLLECTION].find(
+        {"connection": connection, "year": year, "month": {"$in": list(months)}},
+        {"_id": 0, "direction": 1, "time": 1, "mwh": 1},
+    )
+    frames = [
+        pd.DataFrame({"time": doc["time"], "mwh": doc["mwh"], "direction": doc["direction"]})
+        for doc in documents
+    ]
+    if not frames:
+        return pd.DataFrame(columns=["time", "mwh", "direction"])
+
+    hourly = pd.concat(frames, ignore_index=True)
+    # MongoDB returns UTC times without time zone info, so they are marked as UTC first
+    hourly["time"] = pd.to_datetime(hourly["time"], utc=True).dt.tz_convert("Europe/Oslo")
+    return hourly.sort_values(["direction", "time"])
