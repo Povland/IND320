@@ -5,6 +5,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from pymongo import MongoClient
+
 # ind320 is installed as a package via uv sync. 
 try:
     from ind320 import nve
@@ -65,3 +67,21 @@ def load_areas():
     except requests.RequestException as error:
         st.error(f"Could not fetch areas from NVE: {error}")
         return pd.DataFrame()
+
+
+# One shared MongoDB connection for the whole app, using the details in st.secrets["mongo"].
+# cache_resource (not cache_data) is used because a connection should be reused, not copied
+@st.cache_resource
+def get_mongo_db():
+    client = MongoClient(st.secrets["mongo"]["uri"], serverSelectionTimeoutMS=10000)
+    return client[st.secrets["mongo"].get("database", "ind320")]
+
+
+# Pings MongoDB. Returns (True, list of collections) or (False, error message)
+def check_mongo_connection():
+    try:
+        db = get_mongo_db()
+        db.client.admin.command("ping")
+        return True, db.list_collection_names()
+    except Exception as error:   # missing secrets, wrong password, network, IP not allowed in Atlas...
+        return False, str(error)

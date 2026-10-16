@@ -12,3 +12,6 @@ exercises/
 
 # Don't sync pychache 
 __pycache__/
+
+# Don't sync the .streamlit/secrets.toml file
+.streamlit/secrets.toml

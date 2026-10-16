@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+from utils.data import check_mongo_connection
 
 st.title("Reservoir dashboard")
 st.header("Home")
@@ -14,3 +15,12 @@ st.markdown("""
 """)
 
 st.info("This dashboard is a work in progress. More features will be added in the future.")
+
+# Shows whether the app can reach MongoDB, where the curated data from the notebook is stored
+with st.expander("Database connection"):
+    connected, details = check_mongo_connection()
+    if connected:
+        st.success("Connected to MongoDB.")
+        st.write("Collections:", details if details else "none yet")
+    else:
+        st.error(f"Could not connect to MongoDB: {details}")
