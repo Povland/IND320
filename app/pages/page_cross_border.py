@@ -4,6 +4,7 @@ import plotly.express as px
 import streamlit as st
 
 from utils.data import load_connections, load_hourly_flows, load_months, load_yearly_totals, load_years
+from utils.about import crossborder_data_info
 
 st.title("Cross-border flow")
 st.write(
@@ -95,19 +96,5 @@ else:
     line.update_layout(hovermode="x unified")
     st.plotly_chart(line, width="stretch")
 
-# Where the data comes from
-with st.expander("About the data"):
-    st.markdown("""
-**Source:** [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/), physical cross-border flows,
-fetched through the ENTSO-E API with the Python library `entsoe-py`.
-
-**Processing (in the notebook `notebooks/Oblig2.ipynb`):**
-1. Hourly flows for the last two years were fetched for Norway's 9 cross-border connections, both directions.
-   Connections that report every 15 minutes were averaged to one value per hour (MW over one hour = MWh).
-2. The data was stored in a local Cassandra database using Spark.
-3. Spark extracted the relevant columns and grouped them into one document per connection, year, month and direction.
-4. The documents were stored in MongoDB, which this page reads from.
-
-**Directions:** "Out of Norway" is flow from the Norwegian price area to the foreign area, "Into Norway" the opposite.
-Times are shown in Norwegian time. 2024 and 2026 are partial years (the data covers October 2024 to October 2026).
-""")
+# Where the data comes from. The text is shared with the About page (utils/about.py)
+crossborder_data_info()

@@ -17,6 +17,7 @@ pages = [
     st.Page("pages/page_data.py", title="Reservoir Data", url_path="reservoir-data"),
     st.Page("pages/page_plot.py", title="Reservoir Plot", url_path="reservoir-plot"),
     st.Page("pages/page_cross_border.py", title="Cross-border flow", url_path="cross-border-flow"),
+    st.Page("pages/page_about.py", title="About", url_path="about"),
 ]
 
 st.navigation(pages).run()

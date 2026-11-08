@@ -110,6 +110,11 @@ def run_connection_test(manual=False):
         "manual": manual,   # whether the last test was started with the button
     }
 
+# Clears everything cached with st.cache_data (NVE data, areas, cross-border data, version), so it is fetched again.
+# The MongoDB connection itself (cache_resource) is kept
+def refresh_data():
+    st.cache_data.clear()
+
 
 # ---------------------------------------------------------------------------------------------
 # Cross-border flows (ENTSO-E), prepared in the notebook with Spark and stored in MongoDB.
@@ -136,6 +141,17 @@ def load_years(connection):
 @st.cache_data(ttl=3600)
 def load_months(connection, year):
     return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("month", {"connection": connection, "year": year}))
+
+# The first and last month with cross-border data, as ((year, month), (year, month)). None if the collection is empty
+@st.cache_data(ttl=3600)
+def load_flow_period():
+    collection = get_mongo_db()[FLOWS_COLLECTION]
+    projection = {"_id": 0, "year": 1, "month": 1}
+    first = collection.find_one({}, projection, sort=[("year", 1), ("month", 1)])
+    last = collection.find_one({}, projection, sort=[("year", -1), ("month", -1)])
+    if first is None:
+        return None
+    return (first["year"], first["month"]), (last["year"], last["month"])
 
 
 # Total flow in each direction for one connection in one year, in GWh.
