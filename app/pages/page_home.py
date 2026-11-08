@@ -20,6 +20,7 @@ st.info("This dashboard is a work in progress. More features will be added in th
 # The test runs when the page is loaded (streamlit_app.py), and again when the button is clicked.
 # The button uses on_click, so the new test runs before the page is drawn and the new result is shown right away
 status = st.session_state["mongo_status"]
+tested_at = f"{status['tested_at']:%d.%m.%Y %H:%M:%S}"
 
 with st.expander("Database connection", expanded=not status["connected"]):   # opens by itself if the test failed
     button_column, box_column = st.columns([1, 3], vertical_alignment="center")
@@ -40,3 +41,15 @@ with st.expander("Database connection", expanded=not status["connected"]):   # o
                 st.success(f"Manually tested: {tested_at}. Connected.")
             else:
                 st.error(f"Manually tested: {tested_at}. Not connected.")
+
+    details = status["details"]
+    if not status["connected"]:
+        st.error(f"Connection tested: {tested_at}. Could not connect to MongoDB: {details}")
+    else:
+        st.success(f"Connection tested: {tested_at}. Connected to MongoDB (the server answered and the login worked).")
+        st.write("Collections:", details["collections"] if details["collections"] else "none yet")
+        # Being connected doesn't mean the data is there, so the collection the Cross-border page reads is checked too
+        if details["flow_documents"]:
+            st.success(f"Cross-border data found: {details['flow_documents']:,} documents in `{FLOWS_COLLECTION}`.")
+        else:
+            st.warning(f"No documents in `{FLOWS_COLLECTION}`. Run the ENTSO-E part of the notebook first.")
