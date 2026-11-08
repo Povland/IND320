@@ -3,6 +3,11 @@ import streamlit as st
 from utils.data import run_connection_test
 from utils.about import APP_VERSION
 
+# Uses the full width of the window instead of Streamlit's narrow default. Applies to every page
+st.set_page_config(layout="wide")
+# Keeps the content from getting too wide on very large screens
+st.markdown("<style>.block-container { max-width: 1800px; }</style>", unsafe_allow_html=True)
+
 # Tests the database connection once each time the page is loaded.
 # st.session_state lasts as long as the browser tab: it is kept when moving between pages,
 # and empty again after a reload. So the test runs only when there is no result yet

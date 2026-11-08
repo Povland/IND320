@@ -1,13 +1,10 @@
 import calendar
+import textwrap
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-import calendar
-import textwrap
-
-import pandas as pd
 
 # Same colours and names for the directions as in the notebook
 DIRECTION_COLORS = {"Out of Norway": "#2a78d6", "Into Norway": "#eb6834"}
@@ -18,8 +15,6 @@ COUNTRIES = {"SE": "Sweden", "DK": "Denmark", "DE": "Germany", "NL": "Netherland
 
 # The three ways of choosing connections, shown as pills at the top
 MODES = ["All connections", "Countries", "Connections"]
-
-ALL_MONTHS = 0   # the "All" pill among the months (real months are 1-12)
 
 VIEWS = ["Aggregated", "Separate", "Both"]
 PIE_VIEWS = ["Aggregated", "Per connection"]   # Separate and Both would look the same in a pie, so it has its own two
@@ -168,50 +163,46 @@ def year_selector(years):
     return [year for year, key in keys.items() if st.session_state[key]]
 
 
-# Month pills with an "All" pill first. Every month (and All) is ticked from the start.
-# Ticking All ticks every month, unticking All unticks everything.
-# Unticking one month also unticks All, and ticking every month by hand ticks All too.
-# The previous selection is kept, so the callback can tell what was just clicked
+# "All" as its own pill, with the months under it in two columns (Jan–Jun and Jul–Dec, see the CSS on the page).
+# Everything is ticked from the start. Clicking All ticks every month, clicking it again unticks everything.
+# Ticking or unticking a month turns All on if every month is ticked, and off otherwise
 def month_selector(available_months, key):
-    options = [ALL_MONTHS] + list(available_months)
-    previous_key = f"{key}_previous"
+    months = list(available_months)
+    all_key, months_key = f"{key}_all", f"{key}_list"
 
-    if key not in st.session_state:
-        st.session_state[key] = list(options)
+    if months_key not in st.session_state:
+        st.session_state[months_key] = list(months)
+        st.session_state[all_key] = "All"
 
-    # Removes months that don't exist for the chosen connections and years (the widget fails on unknown options)
-    selection = [m for m in st.session_state[key] if m in options]
-    # All means every month, also months that came with newly chosen connections or years
-    if ALL_MONTHS in selection:
-        selection = list(options)
-    st.session_state[key] = selection
-    st.session_state[previous_key] = selection
+    # Removes months that don't exist for the chosen connections and years (the widget fails on unknown options).
+    # If All is on, months that came with newly chosen connections or years are ticked too
+    if st.session_state[all_key] == "All":
+        st.session_state[months_key] = list(months)
+    else:
+        st.session_state[months_key] = [m for m in st.session_state[months_key] if m in months]
 
-    def update_all_pill():
-        new = set(st.session_state[key] or [])
-        old = set(st.session_state[previous_key])
-        months = set(available_months)
+    def all_clicked():
+        st.session_state[months_key] = list(months) if st.session_state[all_key] == "All" else []
 
-        if ALL_MONTHS in new and ALL_MONTHS not in old:      # All was ticked
-            new = months | {ALL_MONTHS}
-        elif ALL_MONTHS in old and ALL_MONTHS not in new:    # All was unticked
-            new = set()
-        elif months <= new:                                  # every month is ticked
-            new.add(ALL_MONTHS)
-        else:                                                # at least one month is unticked
-            new.discard(ALL_MONTHS)
+    def month_clicked():
+        every_month = set(st.session_state[months_key] or []) == set(months)
+        st.session_state[all_key] = "All" if every_month else None
 
-        st.session_state[key] = [option for option in options if option in new]
+    st.pills("Months", options=["All"], selection_mode="single", key=all_key, on_change=all_clicked)
 
-    st.pills(
-        "Months",
-        options=options,
-        selection_mode="multi",
-        format_func=lambda month: "All" if month == ALL_MONTHS else calendar.month_name[month],
-        key=key,
-        on_change=update_all_pill,
-    )
-    return [m for m in st.session_state[key] if m != ALL_MONTHS]
+    # Own container, so the two-column CSS on the page only hits the month pills
+    with st.container(key="month_list"):
+        st.pills(
+            "Months",
+            options=months,
+            selection_mode="multi",
+            format_func=lambda month: calendar.month_name[month],
+            key=months_key,
+            on_change=month_clicked,
+            label_visibility="collapsed",
+        )
+
+    return list(st.session_state[months_key] or [])
 
 
 # ---------------------------------------------------------------------------------------------
@@ -251,6 +242,7 @@ def _lighter(hex_color, amount):
     red, green, blue = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
     return "rgb({}, {}, {})".format(*(round(c + (255 - c) * amount) for c in (red, green, blue)))
 
+
 # Title on several lines: a short headline first, then the details (which connections), wrapped to the given width.
 # The space above the chart grows with the number of lines, so the title never runs into the chart
 def _apply_title(fig, headline, details, width):
@@ -267,6 +259,7 @@ def pie_chart(totals, view, headline, details):
             color="direction", color_discrete_map=DIRECTION_COLORS,
         )
         fig.update_traces(texttemplate="%{percent:.1%}<br>%{value:,.0f} GWh")
+        fig.update_layout(showlegend=True)   # Plotly hides the legend with only one slice (one direction)
     else:
         fig = px.sunburst(
             totals, path=["direction", "label"], values="gwh",
@@ -336,5 +329,7 @@ def line_chart(hourly, view, layout, headline, details, order):
                 ))
         fig.update_layout(xaxis_title=AXIS_LABELS["time"], yaxis_title=AXIS_LABELS["mwh"], hovermode="closest")
 
+    # For all three layouts: Plotly hides the legend with only one line (one direction)
+    fig.update_layout(showlegend=True)
     _apply_title(fig, headline, details, width=110)   # the plot gets the whole width
     return fig

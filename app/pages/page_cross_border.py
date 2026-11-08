@@ -80,14 +80,10 @@ with left:
         # One connection in one direction: nothing to split, so the total is shown as a number instead of a pie
         st.metric(f"{pie_headline}: {selection}", f"{totals['gwh'].sum():,.0f} GWh")
     else:
-        # With one direction, Aggregated would be a single slice, so the pie shows the connections instead.
-        # With both directions, the view can be chosen (only for two or more connections, since one would look the same)
-        if one_direction:
-            pie_view = "Per connection"
-        elif len(chosen) > 1:
+        # The view can be chosen for two or more connections. With one connection both views would look the same
+        pie_view = "Aggregated"
+        if len(chosen) > 1:
             pie_view = st.radio("Pie chart view", options=PIE_VIEWS, horizontal=True, help=PIE_VIEW_HELP, key="pie_view")
-        else:
-            pie_view = "Aggregated"
 
         st.plotly_chart(
             pie_chart(totals, pie_view, headline=pie_headline, details=title_text(selection, pie_view, chosen)),
@@ -105,18 +101,18 @@ with left:
 
     available_months = load_months(connections_key, years_key)
 
-# Right side: which months to include (pills), with "All" first. The months apply to every chosen year
+# Right side: which months to include. "All" on top, the months under it in two columns. The months apply to every chosen year
 with right:
-    # Small style change: shows the month pills as a list going down instead of side by side.
-    # Only applies inside the container with the key month_pills, so the pills at the top stay side by side
+    # Small style change: puts the month pills in a grid that fills downwards, six per column (Jan–Jun, Jul–Dec).
+    # Only applies inside the container with the key month_list (see month_selector), so other pills are not affected
     st.markdown(
-        "<style>.st-key-month_pills .stButtonGroup div:has(> button) "
-        "{ flex-direction: column; align-items: flex-start; }</style>",
+        "<style>.st-key-month_list .stButtonGroup div:has(> button) "
+        "{ display: grid; grid-auto-flow: column; grid-template-rows: repeat(6, auto); "
+        "gap: 0.5rem 0.75rem; justify-content: start; }</style>",
         unsafe_allow_html=True,
     )
-    with st.container(key="month_pills"):
-        # One selection for the whole page, kept when the connections or years change
-        chosen_months = month_selector(available_months, key="months")
+    # One selection for the whole page, kept when the connections or years change
+    chosen_months = month_selector(available_months, key="months")
 
 # Below the columns: line plot of the hourly flow, across the whole width of the page
 if not chosen_months:
