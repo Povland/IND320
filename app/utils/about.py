@@ -12,12 +12,10 @@ from utils.data import available_dates, load_areas, load_reservoir_data, nve
 
 ABOUT_PAGE = "pages/page_about.py"
 
-# The app version. Set by hand: one number per assignment
-APP_VERSION = "3"
 
 
 def author():
-    st.markdown(f"**Philip A. K. Øvland** · IND320 Data til beslutning · NMBU · autumn 2026 · version {APP_VERSION}")
+    st.markdown("**Philip A. K. Øvland** · IND320 Data til beslutning · NMBU · autumn 2026")
 
 
 def reservoir_source():

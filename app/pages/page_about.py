@@ -1,9 +1,11 @@
 import streamlit as st
 
 from utils import about
+from utils.version import show_version
 
 st.title("About the data and the project")
 about.author()
+show_version()
 
 st.header("Two data sources")
 about.reservoir_source()

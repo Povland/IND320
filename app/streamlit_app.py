@@ -1,6 +1,7 @@
 import streamlit as st
 
 from utils.data import run_connection_test
+from utils.version import get_version
 
 # Tests the database connection once each time the page is loaded.
 # st.session_state lasts as long as the browser tab: it is kept when moving between pages,
@@ -20,4 +21,9 @@ pages = [
     st.Page("pages/page_about.py", title="About", url_path="about"),
 ]
 
-st.navigation(pages).run()
+navigation = st.navigation(pages)
+
+version = get_version()
+st.sidebar.caption(f"App version: {version['version']}", help=version.get("error"))
+
+navigation.run()
