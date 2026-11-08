@@ -33,4 +33,5 @@ st.sidebar.markdown(
     f"<div style='position: fixed; bottom: 1rem; font-size: 0.8rem; opacity: 0.6;'>App version: {APP_VERSION}</div>",
     unsafe_allow_html=True,
 )
+
 navigation.run()

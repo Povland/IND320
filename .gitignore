@@ -1,20 +1,20 @@
-# Don't sync folder NoSync
+# Secret files for the notebook (tokens and passwords)
 No_sync/
 
 # Don't sync secrets
 Secrets/
 
-# Don't sync exercises
+# Course exercises, kept locally
 exercises/
 
-# Don't sync the venv
+# Virtual environment made by uv
 .venv/
 
-# Don't sync pychache 
+# Python's compiled files
 __pycache__/
 
-# Don't sync the .streamlit/secrets.toml file
+# Secrets for the Streamlit app
 .streamlit/secrets.toml
 
-# Don't sync the data/entsoe_flows.parquet 
+# Local backup of the ENTSO-E data, made by notebooks/Oblig2.ipynb
 data/entsoe_flows.parquet

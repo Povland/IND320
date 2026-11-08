@@ -1,21 +1,23 @@
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 import streamlit as st
-
 from pymongo import MongoClient
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-# ind320 is installed as a package via uv sync. 
+# ind320 (src/ind320) is installed as a package with uv sync.
+# If the app is run without it installed, the src folder is added to the import path instead
 try:
     from ind320 import nve
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
     from ind320 import nve
+
+# The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
+FLOWS_COLLECTION = "crossborder_flows"
 
 
 # Caches the result for one hour, since the data only changes weekly.
@@ -48,7 +50,8 @@ def available_area_numbers(area_type):
 
 
 # Reservoir statistics for the chosen areas of one type (EL, NO or VASS) within the chosen period.
-# NVE's API has no date parameters, so everything is downloaded once (cached above) and the period is cut out here. The slider therefore decides which data the app uses.
+# NVE's API has no date parameters, so everything is downloaded once (cached above) and the period is cut out here. 
+# The slider therefore decides which data the app uses.
 def load_reservoir_period(area_type, area_numbers, start, end):
     data = load_reservoir_data()
     if data.empty:
@@ -110,7 +113,8 @@ def run_connection_test(manual=False):
         "manual": manual,   # whether the last test was started with the button
     }
 
-# Clears everything cached with st.cache_data (NVE data, areas, cross-border data, version), so it is fetched again.
+
+# Clears everything cached with st.cache_data (NVE data, areas, cross-border data), so it is fetched again.
 # The MongoDB connection itself (cache_resource) is kept
 def refresh_data():
     st.cache_data.clear()
@@ -121,8 +125,6 @@ def refresh_data():
 # One document per connection, year, month and direction, with the hours as lists (time, mwh)
 # and the month's total (total_mwh). See notebooks/Oblig2.ipynb.
 # ---------------------------------------------------------------------------------------------
-
-FLOWS_COLLECTION = "crossborder_flows"
 
 
 # All connections in MongoDB, e.g. ["NO_1-SE_3", "NO_2-DE_LU", ...]
@@ -143,6 +145,7 @@ def load_months(connections, years):
     return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct(
         "month", {"connection": {"$in": list(connections)}, "year": {"$in": list(years)}}
     ))
+
 
 # The first and last month with cross-border data, as ((year, month), (year, month)). None if the collection is empty
 @st.cache_data(ttl=3600)
@@ -172,8 +175,6 @@ def load_yearly_totals(connections, years):
         for doc in result
     ]
     return pd.DataFrame(rows, columns=["connection", "direction", "gwh"])
-
-
 
 
 # Hourly flow for the chosen connections in the chosen months of the chosen years, one row per hour, connection and direction.

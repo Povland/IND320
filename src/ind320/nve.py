@@ -20,11 +20,9 @@ COLUMN_NAMES = {
     "endring_fyllingsgrad": "filling_degree_change",
 }
 
-
+#Fetches raw JSON from an endpoint in NVE's Magasinstatistikk API.
+#Request waits up to 2 minutes and is retried up to 3 times with increasing pauses.
 def fetch_json(endpoint):
-    #Fetches raw JSON from an endpoint in NVE's Magasinstatistikk API.
-    #Request waits up to 2 minutes and is retried up to 3 times with increasing pauses.
-
     retry = Retry(
         total=3,
         backoff_factor=2,                          # waits 2, 4, 8 seconds between attempts
@@ -43,8 +41,8 @@ def fetch_json(endpoint):
     return response.json()
 
 
+#Fetches the weekly reservoir statistics, with date_id as a sorted index.
 def fetch_reservoir_data():
-    #Fetches the weekly reservoir statistics, with date_id as a sorted index.
     reservoir_data = pd.DataFrame(fetch_json("HentOffentligData")).rename(columns=COLUMN_NAMES)
 
     reservoir_data["date_id"] = pd.to_datetime(reservoir_data["date_id"])
@@ -53,6 +51,8 @@ def fetch_reservoir_data():
     return reservoir_data.set_index("date_id").sort_index()
 
 
+# NVE's list of areas (NO, EL 1–5, VASS 1–4) with names and descriptions, one row per area.
+# The API returns the areas grouped by type, so the groups are flattened into one list
 def fetch_areas():
     groups = fetch_json("HentOmr%C3%A5der")
     rows = [area for group in groups for area_list in group.values() for area in area_list]

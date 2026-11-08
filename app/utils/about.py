@@ -19,12 +19,6 @@ APP_VERSION = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["v
 
 ABOUT_PAGE = "pages/page_about.py"
 
-# The app version, read from pyproject.toml so there is only one place to change it.
-# Set by hand: 3.00, 3.01, ... and 4.00 for the next assignment
-PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"   # app/utils/about.py -> parents[2] is the project root
-APP_VERSION = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["version"]
-
-
 
 def author():
     st.markdown(f"**Philip A. K. Øvland** · IND320 Data til beslutning · NMBU · autumn 2026 · version {APP_VERSION}")
