@@ -22,18 +22,21 @@ st.info("This dashboard is a work in progress. More features will be added in th
 status = st.session_state["mongo_status"]
 
 with st.expander("Database connection", expanded=not status["connected"]):   # opens by itself if the test failed
-    st.button("Test connection", on_click=run_connection_test)
+    button_column, box_column = st.columns([1, 3], vertical_alignment="center")
 
-    details = status["details"]
-    if not status["connected"]:
-        st.error(f"Could not connect to MongoDB: {details}")
-    else:
-        st.success("Connected to MongoDB (the server answered and the login worked).")
-        st.write("Collections:", details["collections"] if details["collections"] else "none yet")
-        # Being connected doesn't mean the data is there, so the collection the Cross-border page reads is checked too
-        if details["flow_documents"]:
-            st.success(f"Cross-border data found: {details['flow_documents']:,} documents in `{FLOWS_COLLECTION}`.")
-        else:
-            st.warning(f"No documents in `{FLOWS_COLLECTION}`. Run the ENTSO-E part of the notebook first.")
+    with button_column:
+        # kwargs passes manual=True to run_connection_test, so the result remembers that it was a manual test.
+        # st.button returns True in the run right after it was clicked, so the toast only shows after a manual test
+        if st.button("Test connection", on_click=run_connection_test, kwargs={"manual": True}):
+            if status["connected"]:
+                st.toast(f"Connection tested: {tested_at}. Connected.", icon="✅")
+            else:
+                st.toast(f"Connection tested: {tested_at}. Not connected.", icon="❌")
 
-    st.caption(f"Last tested: {status['tested_at']:%H:%M:%S}")
+    # Box to the right of the button, shown as long as the last test was a manual one (gone after a reload)
+    with box_column:
+        if status["manual"]:
+            if status["connected"]:
+                st.success(f"Manually tested: {tested_at}. Connected.")
+            else:
+                st.error(f"Manually tested: {tested_at}. Not connected.")

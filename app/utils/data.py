@@ -100,13 +100,14 @@ def check_mongo_connection():
 
 
 # Runs the check above and stores the result in the session, so every page can read it without asking MongoDB again.
-# Called once when the page is loaded (streamlit_app.py) and when the "Test connection" button on Home is clicked
-def run_connection_test():
+# Called once when the page is loaded (streamlit_app.py, manual=False) and when the "Test connection" button on Home is clicked (manual=True)
+def run_connection_test(manual=False):
     connected, details = check_mongo_connection()
     st.session_state["mongo_status"] = {
         "connected": connected,
         "details": details,
         "tested_at": datetime.now(ZoneInfo("Europe/Oslo")),   # Norwegian time, also on Streamlit Cloud (which runs in UTC)
+        "manual": manual,   # whether the last test was started with the button
     }
 
 
