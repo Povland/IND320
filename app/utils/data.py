@@ -131,16 +131,18 @@ def load_connections():
     return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("connection"))
 
 
-# The years with data for one connection
+# The years with data for the chosen connections (a tuple, so it can be cached)
 @st.cache_data(ttl=3600)
-def load_years(connection):
-    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("year", {"connection": connection}))
+def load_years(connections):
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("year", {"connection": {"$in": list(connections)}}))
 
 
-# The months with data for one connection in one year (2024 and 2026 are partial years)
+# The months with data for the chosen connections in the chosen years (2024 and 2026 are partial years)
 @st.cache_data(ttl=3600)
-def load_months(connection, year):
-    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct("month", {"connection": connection, "year": year}))
+def load_months(connections, years):
+    return sorted(get_mongo_db()[FLOWS_COLLECTION].distinct(
+        "month", {"connection": {"$in": list(connections)}, "year": {"$in": list(years)}}
+    ))
 
 # The first and last month with cross-border data, as ((year, month), (year, month)). None if the collection is empty
 @st.cache_data(ttl=3600)
@@ -154,35 +156,42 @@ def load_flow_period():
     return (first["year"], first["month"]), (last["year"], last["month"])
 
 
-# Total flow in each direction for one connection in one year, in GWh.
+# Total flow for each chosen connection and direction in the chosen years, in GWh.
 # MongoDB sums the monthly totals, so only the totals (not the hours) are sent to the app
 @st.cache_data(ttl=3600)
-def load_yearly_totals(connection, year):
+def load_yearly_totals(connections, years):
     result = get_mongo_db()[FLOWS_COLLECTION].aggregate([
-        {"$match": {"connection": connection, "year": year}},
-        {"$group": {"_id": "$direction", "total_mwh": {"$sum": "$total_mwh"}}},
+        {"$match": {"connection": {"$in": list(connections)}, "year": {"$in": list(years)}}},
+        {"$group": {
+            "_id": {"connection": "$connection", "direction": "$direction"},
+            "total_mwh": {"$sum": "$total_mwh"},
+        }},
     ])
-    return pd.DataFrame(
-        [{"direction": doc["_id"], "gwh": doc["total_mwh"] / 1000} for doc in result]
-    )
+    rows = [
+        {"connection": doc["_id"]["connection"], "direction": doc["_id"]["direction"], "gwh": doc["total_mwh"] / 1000}
+        for doc in result
+    ]
+    return pd.DataFrame(rows, columns=["connection", "direction", "gwh"])
 
 
-# Hourly flow for one connection in the chosen months of one year, one row per hour and direction.
+
+
+# Hourly flow for the chosen connections in the chosen months of the chosen years, one row per hour, connection and direction.
 # The lists in each document are unpacked into rows, and the time is converted to Norwegian time
 @st.cache_data(ttl=3600)
-def load_hourly_flows(connection, year, months):
+def load_hourly_flows(connections, years, months):
     documents = get_mongo_db()[FLOWS_COLLECTION].find(
-        {"connection": connection, "year": year, "month": {"$in": list(months)}},
-        {"_id": 0, "direction": 1, "time": 1, "mwh": 1},
+        {"connection": {"$in": list(connections)}, "year": {"$in": list(years)}, "month": {"$in": list(months)}},
+        {"_id": 0, "connection": 1, "direction": 1, "time": 1, "mwh": 1},
     )
     frames = [
-        pd.DataFrame({"time": doc["time"], "mwh": doc["mwh"], "direction": doc["direction"]})
+        pd.DataFrame({"time": doc["time"], "mwh": doc["mwh"], "connection": doc["connection"], "direction": doc["direction"]})
         for doc in documents
     ]
     if not frames:
-        return pd.DataFrame(columns=["time", "mwh", "direction"])
+        return pd.DataFrame(columns=["time", "mwh", "connection", "direction"])
 
     hourly = pd.concat(frames, ignore_index=True)
     # MongoDB returns UTC times without time zone info, so they are marked as UTC first
     hourly["time"] = pd.to_datetime(hourly["time"], utc=True).dt.tz_convert("Europe/Oslo")
-    return hourly.sort_values(["direction", "time"])
+    return hourly.sort_values(["connection", "direction", "time"])

@@ -23,7 +23,9 @@ pages = [
 
 navigation = st.navigation(pages)
 
-# The version at the bottom of the sidebar, below the page list. The number is set in pyproject.toml (see utils/about.py)
-st.sidebar.caption(f"App version: {APP_VERSION}")
-
+# Pinned to the bottom of the sidebar. The number is set in pyproject.toml (see utils/about.py)
+st.sidebar.markdown(
+    f"<div style='position: fixed; bottom: 1rem; font-size: 0.8rem; opacity: 0.6;'>App version: {APP_VERSION}</div>",
+    unsafe_allow_html=True,
+)
 navigation.run()

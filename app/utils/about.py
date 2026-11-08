@@ -17,6 +17,13 @@ from utils.data import available_dates, load_areas, load_reservoir_data, nve
 PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"   # app/utils/about.py -> parents[2] is the project root
 APP_VERSION = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["version"]
 
+ABOUT_PAGE = "pages/page_about.py"
+
+# The app version, read from pyproject.toml so there is only one place to change it.
+# Set by hand: 3.00, 3.01, ... and 4.00 for the next assignment
+PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"   # app/utils/about.py -> parents[2] is the project root
+APP_VERSION = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["version"]
+
 
 
 def author():
@@ -139,6 +146,7 @@ def crossborder_limitations():
 - The first and last year are therefore partial. *Data status* on Home shows the exact period.
 - Borders that report every 15 minutes are averaged to hourly values, so short spikes are smoothed out.
 - Hours without a reported value are left out, not set to zero.
+- When connections are added together, an hour that is missing for one of them makes the total for that hour too low.
 - Times are stored in UTC and shown in Norwegian time.
 """)
 
