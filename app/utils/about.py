@@ -111,3 +111,87 @@ def areas_table():
     }
 
     st.dataframe(table, hide_index=True, width="stretch", column_config=column_config)
+
+
+def column_names():
+    # Read from the same dictionary that renames the columns in ind320.nve, so it always matches the code
+    st.write("The API returns Norwegian names. They are renamed on the way in:")
+    st.markdown("\n".join(f"- `{norwegian}` → `{english}`" for norwegian, english in nve.COLUMN_NAMES.items()))
+
+
+def reservoir_limitations():
+    st.markdown("""
+- VASS 4 (Nord-Norge) is in NVE's list of areas, but has no measurements. Only nine of the ten areas carry data.
+- The data is weekly. Each date is the Sunday that ends the ISO week, not the day the values were measured.
+- *Filling degree* is a fraction (0.72 = 72 %), not a percentage.
+- The watercourse areas (VASS) are a hydrological division and don't match the price areas (EL).
+- NVE's API has no date parameters, so the app downloads everything and keeps it for one hour.
+  Use *Refresh data* on Home to get new numbers sooner.
+""")
+
+
+def crossborder_limitations():
+    st.markdown("""
+- The data is a snapshot from when the notebook was last run, two years back from then. The app doesn't fetch new data from ENTSO-E itself.
+- The first and last year are therefore partial. *Data status* on Home shows the exact period.
+- Borders that report every 15 minutes are averaged to hourly values, so short spikes are smoothed out.
+- Hours without a reported value are left out, not set to zero.
+- Times are stored in UTC and shown in Norwegian time.
+""")
+
+
+def links():
+    st.markdown("""
+- **Code:** [github.com/Povland/IND320](https://github.com/Povland/IND320)
+- **NVE Magasinstatistikk:** [API](https://biapi.nve.no/magasinstatistikk/swagger/index.html) ·
+  [description](https://www.nve.no/energi/analyser-og-statistikk/magasinstatistikk/)
+- **ENTSO-E:** [Transparency Platform](https://transparency.entsoe.eu/) ·
+  [API reference](https://documenter.getpostman.com/view/7009892/2s93JtP3F6) ·
+  [entsoe-py](https://github.com/EnergieID/entsoe-py)
+- **Tools:** [Streamlit docs](https://docs.streamlit.io/) · [MongoDB Atlas](https://cloud.mongodb.com/) · [uv](https://docs.astral.sh/uv/)
+""")
+
+
+# The packages the project uses, and what for. The versions are read from what is installed
+PACKAGES = {
+    "streamlit": "the app",
+    "pandas": "tables and data handling",
+    "plotly": "the plots",
+    "pymongo": "reading from MongoDB",
+    "requests": "NVE's API",
+    "entsoe-py": "ENTSO-E's API (notebook)",
+    "pyspark": "processing the data (notebook)",
+    "cassandra-driver": "Cassandra (notebook)",
+}
+
+
+def tech_stack():
+    rows = [{"Package": "Python", "Version": platform.python_version(), "Used for": "everything"}]
+    for package, used_for in PACKAGES.items():
+        try:
+            installed = version(package)
+        except PackageNotFoundError:
+            installed = "not installed"
+        rows.append({"Package": package, "Version": installed, "Used for": used_for})
+    st.dataframe(pd.DataFrame(rows), hide_index=True)
+
+
+# ---------------------------------------------------------------------------------------------
+# The "About the data" boxes on the other pages: the parts that belong there, and a link to the About page
+# ---------------------------------------------------------------------------------------------
+
+def reservoir_data_info():
+    with st.expander("About the data"):
+        reservoir_source()
+        st.markdown("**Known limitations**")
+        reservoir_limitations()
+        st.page_link(ABOUT_PAGE, label="More about the data and the project", icon="ℹ️")
+
+
+def crossborder_data_info():
+    with st.expander("About the data"):
+        crossborder_source()
+        pipeline()
+        st.markdown("**Known limitations**")
+        crossborder_limitations()
+        st.page_link(ABOUT_PAGE, label="More about the data and the project", icon="ℹ️")
