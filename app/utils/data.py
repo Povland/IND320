@@ -7,6 +7,9 @@ import streamlit as st
 
 from pymongo import MongoClient
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 # ind320 is installed as a package via uv sync. 
 try:
     from ind320 import nve
@@ -77,14 +80,34 @@ def get_mongo_db():
     return client[st.secrets["mongo"].get("database", "ind320")]
 
 
-# Pings MongoDB. Returns (True, list of collections) or (False, error message)
+# Checks the connection to MongoDB in three steps, all of which need a live connection:
+# 1. ping: the server answers, and the login in the URI is accepted
+# 2. list the collections: the user is allowed to read the database
+# 3. count the cross-border documents: the data the app needs is actually there
+# Returns (True, {"collections": [...], "flow_documents": n}) or (False, error message)
 def check_mongo_connection():
     try:
+        if "mongo" not in st.secrets:   # raises an error itself if there is no secrets file at all
+            return False, "No [mongo] section in the secrets (.streamlit/secrets.toml, or Settings → Secrets on Streamlit Cloud)."
         db = get_mongo_db()
         db.client.admin.command("ping")
-        return True, db.list_collection_names()
+        return True, {
+            "collections": db.list_collection_names(),
+            "flow_documents": db[FLOWS_COLLECTION].count_documents({}),
+        }
     except Exception as error:   # missing secrets, wrong password, network, IP not allowed in Atlas...
         return False, str(error)
+
+
+# Runs the check above and stores the result in the session, so every page can read it without asking MongoDB again.
+# Called once when the page is loaded (streamlit_app.py) and when the "Test connection" button on Home is clicked
+def run_connection_test():
+    connected, details = check_mongo_connection()
+    st.session_state["mongo_status"] = {
+        "connected": connected,
+        "details": details,
+        "tested_at": datetime.now(ZoneInfo("Europe/Oslo")),   # Norwegian time, also on Streamlit Cloud (which runs in UTC)
+    }
 
 
 # ---------------------------------------------------------------------------------------------

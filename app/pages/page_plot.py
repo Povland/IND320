@@ -2,9 +2,10 @@ import plotly.express as px
 import streamlit as st
 
 from utils.controls import AREA_TYPES, area_number_selector, area_type_selector, period_selector
+from utils.about import reservoir_data_info
 from utils.data import available_area_numbers, available_dates, load_reservoir_data, load_reservoir_period
 
-st.title("Reservoir Data Plot")
+st.title("Reservoir Plot")
 st.write(
     "Compare the areas over time. Choose the type of area and the period, and which variable to plot below. Each line is one area."
 )
@@ -13,7 +14,7 @@ if load_reservoir_data().empty:
     st.warning("Reservoir data is not available. Please check the data source.")
     st.stop()
 
-# Controls at the top of the page (shared with the Data page) Area type and areas on the left, period on the right
+# Controls at the top of the page (shared with the Reservoir Data page). Area type and areas on the left, period on the right
 left, right = st.columns([1, 2])
 with left:
     area_type = area_type_selector("plot")
@@ -51,3 +52,5 @@ fig = px.line(
 )
 
 st.plotly_chart(fig, width="stretch")
+
+reservoir_data_info()

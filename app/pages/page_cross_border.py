@@ -5,10 +5,11 @@ import streamlit as st
 
 from utils.data import load_connections, load_hourly_flows, load_months, load_yearly_totals, load_years
 
-st.title("Cross-border flows")
+st.title("Cross-border flow")
 st.write(
     "Physical power flows between Norway and its neighbouring countries, from ENTSO-E. "
-    "Choose a connection and a year on the left, and which months to show on the right."
+    "Choose a connection and a year on the left, and which months to show on the right. "
+    "The hourly flow for the chosen months is shown below."
 )
 
 # Same colours and names for the directions as in the notebook
@@ -56,7 +57,7 @@ with left:
             f"–{calendar.month_name[months_in_year[-1]]}."
         )
 
-# Right side: which months to include (pills), with a line plot of the hourly flow
+# Right side: which months to include (pills)
 with right:
     # Small style change: shows the month pills as a list going down instead of side by side.
     # Targets the element that holds the pill buttons inside Streamlit's pills widget
@@ -74,24 +75,25 @@ with right:
         key=f"months_{connection}_{year}",   # own selection per connection and year
     )
 
-    if not chosen_months:
-        st.info("No months selected. Choose one or more months above.")
-    else:
-        hourly = load_hourly_flows(connection, year, tuple(sorted(chosen_months)))
-        hourly["direction"] = hourly["direction"].map(DIRECTION_LABELS)
+# Below the columns: line plot of the hourly flow, across the whole width of the page
+if not chosen_months:
+    st.info("No months selected. Choose one or more months above.")
+else:
+    hourly = load_hourly_flows(connection, year, tuple(sorted(chosen_months)))
+    hourly["direction"] = hourly["direction"].map(DIRECTION_LABELS)
 
-        line = px.line(
-            hourly,
-            x="time",
-            y="mwh",
-            color="direction",
-            color_discrete_map=DIRECTION_COLORS,
-            title=f"Hourly flow on {connection}, {year}",
-            labels={"time": "Time (Norwegian time)", "mwh": "MWh per hour", "direction": "Direction"},
-        )
-        line.update_traces(line={"width": 1.2})
-        line.update_layout(hovermode="x unified")
-        st.plotly_chart(line, width="stretch")
+    line = px.line(
+        hourly,
+        x="time",
+        y="mwh",
+        color="direction",
+        color_discrete_map=DIRECTION_COLORS,
+        title=f"Hourly flow on {connection}, {year}",
+        labels={"time": "Time (Norwegian time)", "mwh": "MWh per hour", "direction": "Direction"},
+    )
+    line.update_traces(line={"width": 1.2})
+    line.update_layout(hovermode="x unified")
+    st.plotly_chart(line, width="stretch")
 
 # Where the data comes from
 with st.expander("About the data"):
