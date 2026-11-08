@@ -96,8 +96,18 @@ def areas_table():
     data = load_reservoir_data()
     if not data.empty:
         with_data = set(zip(data["area_type"], data["area_nr"]))
-        table["has_data"] = [(t, n) in with_data for t, n in zip(table["area_type"], table["area_nr"])]
+        table["has_data"] = [
+            (area_type, area_nr) in with_data
+            for area_type, area_nr in zip(table["area_type"], table["area_nr"])
+        ]
 
-    st.dataframe(
-        table,
-        hide_index=True,
+    # How the description and has_data columns are shown
+    column_config = {
+        "description": st.column_config.TextColumn("description", width="large"),
+        "has_data": st.column_config.CheckboxColumn(
+            "Has data",
+            help="Whether the area has any measurements in the reservoir data",
+        ),
+    }
+
+    st.dataframe(table, hide_index=True, width="stretch", column_config=column_config)
