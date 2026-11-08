@@ -20,8 +20,8 @@ COLUMN_NAMES = {
     "endring_fyllingsgrad": "filling_degree_change",
 }
 
-#Fetches raw JSON from an endpoint in NVE's Magasinstatistikk API.
-#Request waits up to 2 minutes and is retried up to 3 times with increasing pauses.
+# Fetches raw JSON from an endpoint in NVE's Magasinstatistikk API.
+# Request waits up to 2 minutes and is retried up to 3 times with increasing pauses.
 def fetch_json(endpoint):
     retry = Retry(
         total=3,
@@ -41,7 +41,7 @@ def fetch_json(endpoint):
     return response.json()
 
 
-#Fetches the weekly reservoir statistics, with date_id as a sorted index.
+# Fetches the weekly reservoir statistics, with date_id as a sorted index.
 def fetch_reservoir_data():
     reservoir_data = pd.DataFrame(fetch_json("HentOffentligData")).rename(columns=COLUMN_NAMES)
 

@@ -660,11 +660,6 @@ dependencies = [
     { name = "streamlit" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "ipykernel" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "anywidget" },
@@ -704,9 +699,6 @@ requires-dist = [
     { name = "statsmodels" },
     { name = "streamlit" },
 ]
-
-[package.metadata.requires-dev]
-dev = [{ name = "ipykernel", specifier = ">=7.3.0" }]
 
 [[package]]
 name = "interface-meta"

@@ -1,9 +1,6 @@
 # Secret files for the notebook (tokens and passwords)
 No_sync/
 
-# Don't sync secrets
-Secrets/
-
 # Course exercises, kept locally
 exercises/
 
