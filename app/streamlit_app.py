@@ -1,7 +1,7 @@
 import streamlit as st
 
 from utils.data import run_connection_test
-from utils.version import get_version
+from utils.about import APP_VERSION
 
 # Tests the database connection once each time the page is loaded.
 # st.session_state lasts as long as the browser tab: it is kept when moving between pages,
@@ -23,7 +23,7 @@ pages = [
 
 navigation = st.navigation(pages)
 
-version = get_version()
-st.sidebar.caption(f"App version: {version['version']}", help=version.get("error"))
+# The version at the bottom of the sidebar, below the page list. The number is set in pyproject.toml (see utils/about.py)
+st.sidebar.caption(f"App version: {APP_VERSION}")
 
 navigation.run()

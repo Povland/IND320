@@ -1,5 +1,7 @@
 import platform
+import tomllib
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -10,12 +12,15 @@ from utils.data import available_dates, load_areas, load_reservoir_data, nve
 # The About page shows all of them, and the "About the data" boxes on the other pages show the parts that belong there.
 # So there is only one place to change the text.
 
-ABOUT_PAGE = "pages/page_about.py"
+# The app version, read from pyproject.toml so there is only one place to change it.
+# Set by hand: 3.00
+PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"   # app/utils/about.py -> parents[2] is the project root
+APP_VERSION = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]["version"]
 
 
 
 def author():
-    st.markdown("**Philip A. K. Øvland** · IND320 Data til beslutning · NMBU · autumn 2026")
+    st.markdown(f"**Philip A. K. Øvland** · IND320 Data til beslutning · NMBU · autumn 2026 · version {APP_VERSION}")
 
 
 def reservoir_source():
