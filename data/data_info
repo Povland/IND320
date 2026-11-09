@@ -1,0 +1,45 @@
+DATA FOLDER - IND320
+====================
+
+This folder holds static raw data files. They are not changed by the code.
+
+--------------------------------------------------------------------
+reservoirs.csv
+--------------------------------------------------------------------
+What:     NVE Magasinstatistikk, weekly reservoir filling in Norway.
+Source:   Provided with the course for Oblig1. Same data as NVE's
+          Magasinstatistikk API:
+          https://biapi.nve.no/magasinstatistikk/swagger/index.html
+Period:   1995-01-08 to 2026-09-06, one row per area per week.
+Columns:  dato_Id, omrType, omrnr, iso_aar, iso_uke, fyllingsgrad,
+          kapasitet_TWh, fylling_TWh, neste_Publiseringsdato,
+          fyllingsgrad_forrige_uke, endring_fyllingsgrad
+Areas:    omrType = NO   -> all of Norway (omrnr 0)
+          omrType = EL   -> electricity price areas NO1-NO5 (omrnr 1-5)
+          omrType = VASS -> 3 water course areas (omrnr 1-3):
+                            1 = East (Austlandet, Agder, parts of Rogaland)
+                            2 = West (rest of Rogaland, most of Vestland)
+                            3 = North (Møre og Romsdal, Trøndelag, Nord-Norge)
+Used by:  Only Oblig1. The app and Oblig2 fetch the same data from the API.
+
+--------------------------------------------------------------------
+<budomrader>.zip
+--------------------------------------------------------------------
+What:     Shapefile with the electricity price areas (bidding zones)
+          NO1-NO5. Matches omrType = EL in reservoirs.csv.
+Source:   NVE Atlas, https://atlas.nve.no
+          Layer: Nettanlegg > Nettområder > Budområder
+Download: 09.11.2026
+
+--------------------------------------------------------------------
+<nve_region>.zip
+--------------------------------------------------------------------
+What:     Shapefile with NVE's five regions: RØ, RS, RV, RM, RN.
+          Used as the precipitation areas that match omrType = VASS:
+            East  = RS + RØ   (VASS 1)
+            West  = RV        (VASS 2)
+            North = RM + RN   (VASS 3)
+          The regions are merged in code, not in the file.
+Source:   NVE Atlas, https://atlas.nve.no
+          Layer: Administrasjon > Administrative områder > NVE_Region
+Download: 09.11.2026
