@@ -79,7 +79,7 @@ def spc_outliers(series, cutoff_days=30, n_std=3.0, title=None, unit=""):
         "n_std": n_std,
         "satv_median": center,
         "satv_robust_std": robust_std,
-    })
+    }, dtype=object)
     return fig, summary, outliers
 
 

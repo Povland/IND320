@@ -54,11 +54,46 @@ in both directions:
 "Out of Norway" is flow from the Norwegian price area to the foreign area, "Into Norway" the opposite.
 """)
 
+def weather_source():
+    st.markdown("""
+**Weather** comes from [Open-Meteo's Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api):
+hourly ERA5 reanalysis on a 0.25° grid (about 28 × 12 km in Norway), fetched with the modules `ind320.openmeteo` and `ind320.weather`.
+
+Each area (EL 1–5 and VASS 1–3, from shapefiles in [NVE Atlas](https://atlas.nve.no)) is clipped to land,
+and 100 random locations are drawn inside it. The locations are snapped to the ERA5 grid, each grid cell is
+downloaded once, and the area's weather is the average of its cells, weighted by how many locations fell in each.
+
+The data is downloaded inside the app (on *Weather Outliers* or for all missing areas on *Home*),
+and stored in MongoDB as one document per area and year, so the next visit is instant.
+""")
+
+
+def seasonal_methods():
+    st.markdown("""
+**STL** (Seasonal-Trend decomposition using LOESS) splits the weekly filling degree into a slow **trend**,
+a **seasonal** pattern that repeats every year, and a **residual**. The seasonal smoother counts years,
+the trend smoother counts weeks and has to be longer than one year.
+
+The **spectrogram** shows how strong each frequency is over time, in overlapping windows.
+The yearly cycle is at 1 cycle per year. A longer window gives sharper frequencies, but blurs when things change.
+""")
+
+
+def anomaly_methods():
+    st.markdown("""
+**SPC on the precipitation:** the season is removed with a DCT high-pass filter, and the boundaries are the median
+± a number of robust standard deviations (1.4826 × MAD) of what is left, estimated from the whole year.
+The season is added back to the boundaries, so they follow it in the plot.
+
+**LOF on the temperature:** the Local Outlier Factor compares each hour with its neighbours in time and temperature,
+and marks the given share of hours that stand out most.
+""")
+
 
 def how_they_fit():
     st.markdown("""
 Reservoirs fill up with rain and snowmelt, and empty when the power is used or sold.
-The flow data show how much is actually being sold abroad, and how much is bought back.
+The weather data show what falls on each area, and the flow data show how much is sold abroad and bought back.
 """)
 
 
@@ -145,6 +180,18 @@ def crossborder_limitations():
 """)
 
 
+def weather_limitations():
+    st.markdown("""
+- 100 random locations per area for now. The task asks for 1000, which takes several days of the free API's quota for all areas.
+- `snow_depth` is empty for the ERA5 model, and is shown as missing.
+- Only whole years can be chosen, since the outlier boundaries are estimated from the whole year.
+- SPC is applied to the precipitation, as the task says. Precipitation is skewed and can't be negative,
+  so it gives many outliers above and none below.
+- All users share the free API's daily limit (10,000 calls). One area for one year is about 1,200 calls.
+- Times are in UTC.
+""")
+
+
 def links():
     st.markdown("""
 - **Code:** [github.com/Povland/IND320](https://github.com/Povland/IND320)
@@ -153,6 +200,9 @@ def links():
 - **ENTSO-E:** [Transparency Platform](https://transparency.entsoe.eu/) ·
   [API reference](https://documenter.getpostman.com/view/7009892/2s93JtP3F6) ·
   [entsoe-py](https://github.com/EnergieID/entsoe-py)
+- **Open-Meteo:** [Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) ·
+  [documentation](https://open-meteo.com/en/docs)
+- **NVE Atlas (shapefiles):** [atlas.nve.no](https://atlas.nve.no)
 - **Tools:** [Streamlit docs](https://docs.streamlit.io/) · [MongoDB Atlas](https://cloud.mongodb.com/) · [uv](https://docs.astral.sh/uv/)
 """)
 
@@ -162,8 +212,12 @@ PACKAGES = {
     "streamlit": "the app",
     "pandas": "tables and data handling",
     "plotly": "the plots",
-    "pymongo": "reading from MongoDB",
-    "requests": "NVE's API",
+    "pymongo": "reading from and writing to MongoDB",
+    "requests": "NVE's and Open-Meteo's APIs",
+    "geopandas": "the shapefiles and the random locations",
+    "scipy": "the DCT and the spectrogram",
+    "scikit-learn": "the Local Outlier Factor",
+    "statsmodels": "STL",
     "entsoe-py": "ENTSO-E's API (notebook)",
     "pyspark": "processing the data (notebook)",
     "cassandra-driver": "Cassandra (notebook)",
@@ -199,4 +253,22 @@ def crossborder_data_info():
         pipeline()
         st.markdown("**Known limitations**")
         crossborder_limitations()
+        st.page_link(ABOUT_PAGE, label="More about the data and the project", icon="ℹ️")
+
+
+def seasonal_data_info():
+    with st.expander("About the data and the methods"):
+        reservoir_source()
+        seasonal_methods()
+        st.markdown("**Known limitations**")
+        reservoir_limitations()
+        st.page_link(ABOUT_PAGE, label="More about the data and the project", icon="ℹ️")
+
+
+def weather_data_info():
+    with st.expander("About the data and the methods"):
+        weather_source()
+        anomaly_methods()
+        st.markdown("**Known limitations**")
+        weather_limitations()
         st.page_link(ABOUT_PAGE, label="More about the data and the project", icon="ℹ️")

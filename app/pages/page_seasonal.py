@@ -2,6 +2,7 @@ import streamlit as st
 
 from utils.controls import get_global_selection, single_area_selector
 from utils.data import load_filling_series, seasonal
+from utils.about import seasonal_data_info
 
 st.title("Seasonality & Spectrum")
 st.write(
@@ -116,3 +117,5 @@ with spectrogram_tab:
             f"overlap {window_overlap} weeks. Frequency resolution {resolution:.2f} cycles per year, "
             f"a new window every {step} weeks, {power.shape[1]} windows in total."
         )
+
+seasonal_data_info()

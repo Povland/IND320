@@ -16,9 +16,6 @@ __pycache__/
 # Local backup of the ENTSO-E data, made by notebooks/Oblig2.ipynb
 data/entsoe_flows.parquet
 
-# Local backups of the weather data, made by notebooks/Oblig3.ipynb
-data/weather_*.parquet
-
 # Unzipped shapefiles (the zips are what's used)
 data/*/
 

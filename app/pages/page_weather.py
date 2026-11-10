@@ -8,6 +8,7 @@ from utils.data import (
     anomalies, available_area_numbers, available_weather_years, download_and_store_weather, load_region_weather,
     openmeteo, weather_download_cost, weather_years,
 )
+from utils.about import weather_data_info
 
 st.title("Weather Outliers")
 st.write(
@@ -153,3 +154,5 @@ with lof_tab:
 
     with st.expander(f"The {summary['n_outliers']} anomalies, most unusual first"):
         st.dataframe(outliers.round(3), width="stretch")
+
+weather_data_info()

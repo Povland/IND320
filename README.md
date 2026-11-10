@@ -13,7 +13,9 @@ uv sync     # dependencies + the ind320 package
 uv run streamlit run app/streamlit_app.py
 ```
 
-**The notebook** (`notebooks/Oblig2.ipynb`) also needs Cassandra and Spark:
+**The Oblig3 notebook** (`notebooks/Oblig3.ipynb`) only needs the dependencies and `No_sync/atlas-credentials.env`.
+
+**The Oblig2 notebook** (`notebooks/Oblig2.ipynb`) also needs Cassandra and Spark:
 ```
 docker run --name my_cassandra -p 9042:9042 -d cassandra:latest     # first time (later: docker start my_cassandra)
 ```
@@ -56,21 +58,30 @@ It is shown at the bottom of the sidebar and on the About page.
 | `notebooks/Oblig1.ipynb` | Part 1: reservoir data from CSV |
 | `notebooks/Oblig2.ipynb` | Part 2: NVE and ENTSO-E APIs, Cassandra, Spark and MongoDB |
 | `notebooks/Oblig2.html`, `notebooks/Oblig2.pdf` | Oblig2 exported as HTML and PDF |
+| `notebooks/Oblig3.ipynb` | Part 3: areas and random locations, weather from Open-Meteo, SPC, LOF, STL and spectrogram |
+| `notebooks/Oblig3.html` | Oblig3 exported as HTML |
 | `notebooks/screenshot_entsoe_unexpected_error.png` | Screenshot of an ENTSO-E error, shown in the Oblig2 log |
-| `src/ind320/` | Shared data code (one module per API), installed as a package with `uv sync` |
-| `app/streamlit_app.py` | Entry point of the app: the page list, the connection test on load and the version in the sidebar |
-| `app/pages/` | One file per page: Home, Reservoir Data, Reservoir Plot, Cross-border flow and About |
-| `app/utils/data.py` | The app's access point to data: NVE's API and MongoDB, with caching |
-| `app/utils/controls.py` | Shared controls for the two reservoir pages (area type, areas, period) |
+| `src/ind320/` | All the logic, used by both the notebooks and the app. Installed as a package with `uv sync` |
+| `src/ind320/nve.py`, `entsoe.py` | NVE's and ENTSO-E's APIs |
+| `src/ind320/areas.py` | The shapefiles: price areas and VASS areas, clipped to land, random locations, ERA5 grid cells |
+| `src/ind320/openmeteo.py` | Open-Meteo download. Explains how the free API limit is handled (one request per grid cell, several cells per request, pacing, a cache per cell) |
+| `src/ind320/weather.py` | Weather per area: the download function (region + interval), the weighted average, and the MongoDB store |
+| `src/ind320/anomalies.py` | Outliers with SPC (DCT high-pass filter) and anomalies with LOF |
+| `src/ind320/seasonal.py` | STL decomposition and spectrogram of the filling degree |
+| `src/ind320/config.py` | Reads the secret files in `No_sync/` |
+| `app/streamlit_app.py` | Entry point of the app: the page list, the connection test on load, the global selection in the sidebar and the version |
+| `app/pages/` | One file per page: Home, Reservoir Data, Reservoir Plot, Seasonality & Spectrum, Weather Outliers, Cross-border flow and About |
+| `app/utils/data.py` | The app's access point to data: NVE's API, MongoDB and the weather downloads, with caching |
+| `app/utils/controls.py` | The global selection in the sidebar (area type, areas, period) and the local selectors on the pages |
 | `app/utils/crossborder.py` | Choosers, titles and figures for the Cross-border flow page |
 | `app/utils/about.py` | All text about the data and the project, shared by the About page and the info boxes, plus the app version |
+| `data/data_info` | Where each file in `data/` comes from and what it is used for |
 | `data/reservoirs.csv` | Legacy, only used by Oblig1. The app and Oblig2 use NVE's API |
-| `No_sync/` | Secret files for the notebook. **Not in git** (see below) |
+| `data/Budområder.zip`, `data/NVE_Region.zip`, `data/Norge_N5000.zip` | Shapefiles from NVE Atlas: price areas, NVE regions (merged into the VASS areas) and land cover of Norway |
+| `data/grid_cells.csv` | The ERA5 grid cells of each area, with how many random locations fell in each. Made once by Oblig3, read by the app |
+| `data/weather_cells/` | Downloaded weather per grid cell and year, a local cache so a stopped download can continue. **Not in git** |
+| `No_sync/` | Secret files for the notebooks. **Not in git** (see below) |
 | `.streamlit/secrets.toml` | Secrets for the Streamlit app. **Not in git** (see below) |
-| `notebooks/Oblig3.ipynb` | Part 3: shapefiles from NVE Atlas, random locations per area and weather data from Open-Meteo |
-| `src/ind320/openmeteo.py` | Open-Meteo download. Explains how the free API limit is handled (fewer locations, one request per ERA5 grid cell, pacing) |
-| `data/Budområder.zip`, `data/NVE_Region.zip`, `data/Norge_N5000.zip` | Shapefiles from NVE Atlas: price areas, NVE regions (merged into the VASS areas) and land of Norway. See `data/data_info` |
-| `data/weather_<region>_<year>.parquet` | Local backup of the weather data, made by Oblig3. **Not in git** |
 
 ## Secret files
 
@@ -95,3 +106,4 @@ uri = "mongodb+srv://..."
 database = "ind320"
 ```
 On Streamlit Community Cloud, the same content is pasted into the app's Settings → Secrets.
+The app also writes to MongoDB (the weather downloads), so the user in the URI needs read and write access to the database.
