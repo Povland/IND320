@@ -2,8 +2,8 @@
 #
 # Strategy for the API limit:
 # The free API allows 600 calls per minute, 5000 per hour and 10000 per day. A request counts as
-# n_locations x (n_days / 14) x (n_variables / 10) calls, so one location for a year with 6 variables
-# is about 16 calls. Four things keep the download fast and inside the limit:
+# n_locations x (n_days / 14) x (n_variables / 10) calls, so one location for a year with 5 variables
+# is about 13 calls. Four things keep the download fast and inside the limit:
 #   1. One request per ERA5 grid cell, not per location: ERA5 is a 0.25° grid, and all locations in
 #      a cell get the same data. cell_selection=nearest makes the API use exactly the cell asked for
 #      (the default picks a "suitable" land cell nearby), and elevation=nan turns off the adjustment
@@ -35,13 +35,12 @@ ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "weather_cells"
 
 # Hourly variables, chosen for what fills and empties the reservoirs.
-# snow_depth is empty (None) for the era5 model. It is kept for now and handled as missing in the averages
+# snow_depth was tried, but is empty (None) for the era5 model, so it was removed
 HOURLY_VARIABLES = [
     "temperature_2m",               # °C, decides rain or snow, and when the snow melts
     "precipitation",                # mm, rain + snow (as water)
     "rain",                         # mm, reaches the reservoirs right away
     "snowfall",                     # cm, stays on the ground until it melts
-    "snow_depth",                   # m, snow stored on the ground (empty for era5, see above)
     "et0_fao_evapotranspiration",   # mm, water lost to evaporation
 ]
 

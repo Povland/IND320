@@ -11,10 +11,10 @@ from pymongo import MongoClient
 # ind320 (src/ind320) is installed as a package with uv sync.
 # If the app is run without it installed, the src folder is added to the import path instead
 try:
-    from ind320 import anomalies, nve, openmeteo, seasonal, weather
+    from ind320 import anomalies, areas, maps, nve, openmeteo, seasonal, weather
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-    from ind320 import anomalies, nve, openmeteo, seasonal, weather
+    from ind320 import anomalies, areas, maps, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
 FLOWS_COLLECTION = "crossborder_flows"
@@ -210,51 +210,57 @@ def load_filling_series(area_type, area_nr, start, end):
     return seasonal.filling_series(data, area_type, area_nr)
 
 
-# Weather (ERA5 via Open-Meteo), averaged per area and stored in MongoDB by notebooks/Oblig3.ipynb.
-# One document per area and year (see ind320.weather). The app only reads it for now.
+# Weather (ERA5 via Open-Meteo), averaged per area and stored in MongoDB (see ind320.weather).
+# One document per area, year and number of random locations. Downloaded on Weather Outliers
+# (one area) or Home (all missing areas), or from notebooks/Oblig3.ipynb.
 
-# Which areas and years are stored. Errors are raised from here, so a failed load is NOT cached
+# The numbers of random locations per area that can be chosen, and the default
+POINT_OPTIONS = areas.POINT_OPTIONS
+DEFAULT_POINTS = areas.POINTS_PER_AREA
+
+# The first year offered on the weather pages. ERA5 goes back to 1940, but older years are rarely needed here
+WEATHER_FIRST_YEAR = 2015
+
+
+# Which areas, years and numbers of locations are stored. Errors are raised from here, so a failed load is NOT cached
 @st.cache_data(ttl=3600)
 def _fetch_stored_weather():
     return weather.stored_weather(get_mongo_db())
 
 
-# Which areas and years are stored, one row each. Empty table (and a message) if MongoDB can't be reached
+# Which areas, years and numbers of locations are stored, one row each. Empty table (and a message) if MongoDB can't be reached
 def load_stored_weather():
     try:
         return _fetch_stored_weather()
     except Exception as error:   # missing secrets, network, IP not allowed in Atlas...
         st.error(f"Could not read the stored weather data from MongoDB: {error}")
-        return pd.DataFrame(columns=["region", "area_type", "area_nr", "year", "first_hour", "last_hour", "stored_at"])
+        return pd.DataFrame(columns=["region", "area_type", "area_nr", "year", "points_per_area",
+                                     "first_hour", "last_hour", "stored_at"])
 
 
-# The years with stored weather data for one area, newest first
-def available_weather_years(area_type, area_nr):
+# The years with stored weather data for one area and number of locations, newest first
+def available_weather_years(area_type, area_nr, points_per_area=DEFAULT_POINTS):
     stored = load_stored_weather()
-    years = stored.loc[(stored["area_type"] == area_type) & (stored["area_nr"] == area_nr), "year"]
-    return sorted(years.astype(int).tolist(), reverse=True)
+    match = (stored["area_type"] == area_type) & (stored["area_nr"] == area_nr) & (stored["points_per_area"] == points_per_area)
+    return sorted(stored.loc[match, "year"].astype(int).tolist(), reverse=True)
 
 
-# One area's hourly weather for one year. None if it isn't stored.
-# Cached per area and year, so switching back and forth doesn't ask MongoDB again
+# One area's hourly weather for one year and number of locations. None if it isn't stored.
+# Cached per area, year and number, so switching back and forth doesn't ask MongoDB again
 @st.cache_data(ttl=3600, show_spinner="Loading weather data from MongoDB...")
-def _fetch_region_weather(area_type, area_nr, year):
-    return weather.load_region_weather(get_mongo_db(), weather.region_id(area_type, area_nr), year)
+def _fetch_region_weather(area_type, area_nr, year, points_per_area):
+    return weather.load_region_weather(get_mongo_db(), weather.region_id(area_type, area_nr), year, points_per_area)
 
 
-def load_region_weather(area_type, area_nr, year):
+def load_region_weather(area_type, area_nr, year, points_per_area=DEFAULT_POINTS):
     try:
-        return _fetch_region_weather(area_type, area_nr, year)
+        return _fetch_region_weather(area_type, area_nr, year, points_per_area)
     except Exception as error:
         st.error(f"Could not read weather data for {weather.region_id(area_type, area_nr)} {year}: {error}")
         return None
 
 
-# The first year offered on the weather page. ERA5 goes back to 1940, but older years are rarely needed here
-WEATHER_FIRST_YEAR = 2015
-
-
-# The years that can be chosen on the weather page, newest first. Only whole years: ERA5 arrives about 5 days late,
+# The years that can be chosen on the weather pages, newest first. Only whole years: ERA5 arrives about 5 days late,
 # so a year counts as complete from about 6 January the year after
 def weather_years():
     last_complete = (datetime.now(timezone.utc) - timedelta(days=6)).year - 1
@@ -271,40 +277,88 @@ def _download_minutes(calls):
 
 # What downloading one area for one year costs: (grid cells, API calls, minutes).
 # Cells that are already downloaded locally cost nothing, so this is the most it can cost
-def weather_download_cost(area_type, area_nr, year):
-    cells = weather.region_cells(weather.region_id(area_type, area_nr))
+def weather_download_cost(area_type, area_nr, year, points_per_area=DEFAULT_POINTS):
+    cells = weather.region_cells(weather.region_id(area_type, area_nr), points_per_area)
     calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
     return len(cells), calls, _download_minutes(calls)
-
-
-# Downloads one area for one year from Open-Meteo, averages it over the area and stores it in MongoDB.
-# progress(done, total) is called after each request, for a progress bar.
-# The weather caches are cleared afterwards, so the page sees the new data right away.
-# Errors (the API limit, the network) are raised, so the page can show them
-def download_and_store_weather(area_type, area_nr, year, progress=None):
-    region = weather.region_id(area_type, area_nr)
-    average = weather.download_region_weather(region, f"{year}-01-01", f"{year}-12-31", progress=progress)
-    weather.save_region_weather(get_mongo_db(), region, average)
-    _fetch_stored_weather.clear()
-    _fetch_region_weather.clear()
 
 
 # What downloading several areas for one year costs: (unique grid cells, API calls, minutes).
 # Shared cells are counted once, since they are only downloaded once
-def weather_bulk_cost(regions, year):
-    cells = weather.unique_cells([weather.region_id(area_type, nr) for area_type, nr in regions])
+def weather_bulk_cost(regions, year, points_per_area=DEFAULT_POINTS):
+    cells = weather.unique_cells([weather.region_id(area_type, nr) for area_type, nr in regions], points_per_area)
     calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
     return len(cells), calls, _download_minutes(calls)
+
+
+# Clears the weather caches, so the pages see newly stored data right away
+def _clear_weather_caches():
+    _fetch_stored_weather.clear()
+    _fetch_region_weather.clear()
+
+
+# Downloads one area for one year from Open-Meteo, averages it over the area and stores it in MongoDB.
+# progress(done, total) is called after each request, for a progress bar.
+# Errors (the API limit, the network) are raised, so the page can show them
+def download_and_store_weather(area_type, area_nr, year, points_per_area=DEFAULT_POINTS, progress=None):
+    region = weather.region_id(area_type, area_nr)
+    average = weather.download_region_weather(region, f"{year}-01-01", f"{year}-12-31",
+                                              points_per_area=points_per_area, progress=progress)
+    weather.save_region_weather(get_mongo_db(), region, average, points_per_area)
+    _clear_weather_caches()
 
 
 # Downloads several areas for one year (each shared grid cell once) and stores each area in MongoDB.
 # Nothing is stored until all the cells are downloaded, so an area is never stored half done.
 # If a limit is reached, the downloaded cells are kept locally, and the next attempt continues from there
-def download_and_store_all_weather(regions, year, progress=None):
+def download_and_store_all_weather(regions, year, points_per_area=DEFAULT_POINTS, progress=None):
     region_ids = [weather.region_id(area_type, nr) for area_type, nr in regions]
-    averages = weather.download_regions_weather(region_ids, f"{year}-01-01", f"{year}-12-31", progress=progress)
+    averages = weather.download_regions_weather(region_ids, f"{year}-01-01", f"{year}-12-31",
+                                                points_per_area=points_per_area, progress=progress)
     db = get_mongo_db()
     for region, average in averages.items():
-        weather.save_region_weather(db, region, average)
-    _fetch_stored_weather.clear()
-    _fetch_region_weather.clear()
+        weather.save_region_weather(db, region, average, points_per_area)
+    _clear_weather_caches()
+
+
+# ---------------------------------------------------------------------------------------------
+# Shapes and grid cells for the maps (ind320.areas and ind320.maps).
+# The shapefiles are read and clipped once per server (cached inside ind320.areas), which takes a few seconds
+# the first time. These functions only pick out what each map needs
+# ---------------------------------------------------------------------------------------------
+
+
+# The shapes of all areas of one type, clipped to land. "NO" (all of Norway) has no shape of its own,
+# so it is the five price areas merged into one
+def load_area_shapes(area_type):
+    land = areas.land_areas()
+    if area_type == "NO":
+        norway = land[land["area_type"] == "EL"].dissolve().reset_index(drop=True)
+        norway["area_type"], norway["area_nr"] = "NO", 0
+        return norway[["area_type", "area_nr", "geometry"]]
+    return land[land["area_type"] == area_type].reset_index(drop=True)
+
+
+# The shape of one area, as a one-row table
+def load_area_shape(area_type, area_nr):
+    shapes = load_area_shapes(area_type)
+    return shapes[shapes["area_nr"] == area_nr]
+
+
+# One area's grid cells (latitude, longitude, n_points) for a given number of random locations
+def load_region_cells(area_type, area_nr, points_per_area=DEFAULT_POINTS):
+    return weather.region_cells(weather.region_id(area_type, area_nr), points_per_area)
+
+
+# The filling degree of each area of one type at the last week on or before the given date.
+# Returns (Series from area_nr to filling degree, the date of that week). Empty if there is no data
+def load_filling_at(area_type, date):
+    data = load_reservoir_data()
+    if data.empty:
+        return pd.Series(dtype=float), None
+    of_type = data[data["area_type"] == area_type]
+    of_type = of_type.loc[: pd.Timestamp(date)]
+    if of_type.empty:
+        return pd.Series(dtype=float), None
+    week = of_type.index.max()
+    return of_type.loc[[week]].set_index("area_nr")["filling_degree"], week

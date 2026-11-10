@@ -8,6 +8,7 @@
 # The locations are snapped to the ERA5 grid, which gives one row per area and grid cell (grid_cells).
 # The result is saved as data/grid_cells.csv, so the app can use it without repeating the sampling.
 
+from functools import lru_cache
 from pathlib import Path
 
 import geopandas as gpd
@@ -31,6 +32,8 @@ REGION_TO_VASS = {"RS": 1, "RØ": 1, "RV": 2, "RM": 3, "RN": 3}
 # Sampling. A fixed seed and a fixed order of the areas give the same locations every time
 POINTS_PER_AREA = 100
 SEED = 320
+# The numbers of random locations per area that can be chosen in the app
+POINT_OPTIONS = [100, 200, 500, 1000]
 
 
 # Price areas and watercourse areas in one table: area_type, area_nr, n_vertices, geometry (EPSG:25833)
@@ -127,6 +130,35 @@ def build_grid_cells(data_path=DATA_PATH, points_per_area=POINTS_PER_AREA, seed=
     areas = clip_to_land(load_areas(data_path), data_path)
     locations = sample_locations(areas, points_per_area, seed)
     return areas, locations, grid_cells(locations)
+
+
+# ---------------------------------------------------------------------------------------------
+# Cached versions, used by the app and the download. Reading and clipping the shapefiles takes a few seconds,
+# and the result never changes, so it is done once per process. lru_cache is part of Python, so this works
+# both in the notebook and in the app. The cached tables are never handed out directly, only copies, so a
+# caller that adds a column doesn't change them for everyone else
+# ---------------------------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _land_areas():
+    return clip_to_land(load_areas())
+
+
+# The areas clipped to land (EL 1-5 and VASS 1-3), computed once
+def land_areas():
+    return _land_areas().copy()
+
+
+@lru_cache(maxsize=None)
+def _grid_cells_for(points_per_area, seed):
+    return grid_cells(sample_locations(_land_areas(), points_per_area, seed))
+
+
+# The grid cells of every area for a given number of random locations per area, computed once per number.
+# Same shapefiles, same order, same seed: for 100 locations this gives exactly the same cells as data/grid_cells.csv
+def grid_cells_for(points_per_area=POINTS_PER_AREA, seed=SEED):
+    return _grid_cells_for(points_per_area, seed).copy()
 
 
 # Saves the grid cells to data/grid_cells.csv (made once by the notebook, used by the app)
