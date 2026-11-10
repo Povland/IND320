@@ -11,10 +11,10 @@ from pymongo import MongoClient
 # ind320 (src/ind320) is installed as a package with uv sync.
 # If the app is run without it installed, the src folder is added to the import path instead
 try:
-    from ind320 import nve
+    from ind320 import anomalies, nve, seasonal, weather
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-    from ind320 import nve
+    from ind320 import anomalies, nve, seasonal, weather
 
 # The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
 FLOWS_COLLECTION = "crossborder_flows"
@@ -196,3 +196,55 @@ def load_hourly_flows(connections, years, months):
     # MongoDB returns UTC times without time zone info, so they are marked as UTC first
     hourly["time"] = pd.to_datetime(hourly["time"], utc=True).dt.tz_convert("Europe/Oslo")
     return hourly.sort_values(["connection", "direction", "time"])
+
+
+# Filling degree as a regular weekly series, for STL and the spectrogram (ind320.seasonal).
+# Built from the reservoir data above, so it follows the same period slider.
+
+# One area's filling degree within the chosen period, one value per week (Sundays).
+# Returns an empty series if there is no data for the area or period
+def load_filling_series(area_type, area_nr, start, end):
+    data = load_reservoir_period(area_type, [area_nr], start, end)
+    if data.empty:
+        return pd.Series(dtype=float)
+    return seasonal.filling_series(data, area_type, area_nr)
+
+
+# Weather (ERA5 via Open-Meteo), averaged per area and stored in MongoDB by notebooks/Oblig3.ipynb.
+# One document per area and year (see ind320.weather). The app only reads it for now.
+
+# Which areas and years are stored. Errors are raised from here, so a failed load is NOT cached
+@st.cache_data(ttl=3600)
+def _fetch_stored_weather():
+    return weather.stored_weather(get_mongo_db())
+
+
+# Which areas and years are stored, one row each. Empty table (and a message) if MongoDB can't be reached
+def load_stored_weather():
+    try:
+        return _fetch_stored_weather()
+    except Exception as error:   # missing secrets, network, IP not allowed in Atlas...
+        st.error(f"Could not read the stored weather data from MongoDB: {error}")
+        return pd.DataFrame(columns=["region", "area_type", "area_nr", "year", "first_hour", "last_hour", "stored_at"])
+
+
+# The years with stored weather data for one area, newest first
+def available_weather_years(area_type, area_nr):
+    stored = load_stored_weather()
+    years = stored.loc[(stored["area_type"] == area_type) & (stored["area_nr"] == area_nr), "year"]
+    return sorted(years.astype(int).tolist(), reverse=True)
+
+
+# One area's hourly weather for one year. None if it isn't stored.
+# Cached per area and year, so switching back and forth doesn't ask MongoDB again
+@st.cache_data(ttl=3600, show_spinner="Loading weather data from MongoDB...")
+def _fetch_region_weather(area_type, area_nr, year):
+    return weather.load_region_weather(get_mongo_db(), weather.region_id(area_type, area_nr), year)
+
+
+def load_region_weather(area_type, area_nr, year):
+    try:
+        return _fetch_region_weather(area_type, area_nr, year)
+    except Exception as error:
+        st.error(f"Could not read weather data for {weather.region_id(area_type, area_nr)} {year}: {error}")
+        return None

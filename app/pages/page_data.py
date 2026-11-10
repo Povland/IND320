@@ -1,30 +1,24 @@
 import pandas as pd
 import streamlit as st
 
-from utils.controls import AREA_TYPES, area_number_selector, area_type_selector, period_selector
+from utils.controls import AREA_TYPES, get_global_selection
 from utils.about import reservoir_data_info
+from utils.data import load_reservoir_period
 from utils.data import available_area_numbers, available_dates, load_reservoir_data, load_reservoir_period
 
 st.title("Reservoir Data")
 st.write(
-    "Weekly reservoir statistics from NVE. Choose the type of area and the period. "
+    "Weekly reservoir statistics from NVE. Choose the type of area, the areas and the period in the sidebar. "
     "Each row is one area, and each chart shows how the value developed over the chosen period."
 )
 
-if load_reservoir_data().empty:
-    st.warning("Reservoir data is not available. Please check the data source.")
-    st.stop()
-
-# Controls at the top of the page (shared with the Reservoir Plot page). Area type and areas on the left, period on the right
-left, right = st.columns([1, 2])
-with left:
-    area_type = area_type_selector("data")
-    area_numbers = area_number_selector("data", area_type, available_area_numbers(area_type))
-with right:
-    start, end = period_selector("data", available_dates())
+# The global selection from the sidebar (drawn by streamlit_app.py, shared with the other pages)
+selection = get_global_selection()
+area_type, area_numbers = selection["area_type"], selection["area_numbers"]
+start, end = selection["start"], selection["end"]
 
 if not area_numbers:
-    st.info("No areas selected. Choose one or more areas above.")
+    st.info("No areas selected. Choose one or more areas in the sidebar.")
     st.stop()
 
 data = load_reservoir_period(area_type, area_numbers, start, end)

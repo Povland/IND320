@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.11.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -672,6 +672,7 @@ dependencies = [
     { name = "requests" },
     { name = "river" },
     { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "setuptools" },
     { name = "sounddevice" },
     { name = "statsmodels" },
@@ -713,6 +714,7 @@ requires-dist = [
     { name = "requests" },
     { name = "river" },
     { name = "scikit-learn" },
+    { name = "scipy", specifier = ">=1.17.1" },
     { name = "setuptools" },
     { name = "sounddevice" },
     { name = "statsmodels" },

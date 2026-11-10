@@ -1,5 +1,6 @@
 import streamlit as st
 
+from utils.controls import global_selection
 from utils.data import run_connection_test
 from utils.about import APP_VERSION
 
@@ -22,11 +23,18 @@ pages = [
     st.Page("pages/page_home.py", title="Home", default=True),
     st.Page("pages/page_data.py", title="Reservoir Data", url_path="reservoir-data"),
     st.Page("pages/page_plot.py", title="Reservoir Plot", url_path="reservoir-plot"),
+    st.Page("pages/page_seasonal.py", title="Seasonality & Spectrum", url_path="seasonality-spectrum"),
+    st.Page("pages/page_weather.py", title="Weather Outliers", url_path="weather-outliers"),
     st.Page("pages/page_cross_border.py", title="Cross-border flow", url_path="cross-border-flow"),
     st.Page("pages/page_about.py", title="About", url_path="about"),
 ]
 
 navigation = st.navigation(pages)
+
+# Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file, so it is the same widget on every page. The two last ones are added in the next steps
+GLOBAL_SELECTION_PAGES = {"reservoir-data", "reservoir-plot", "seasonality-spectrum", "weather-outliers"}
+if navigation.url_path in GLOBAL_SELECTION_PAGES:
+    global_selection()
 
 # Pinned to the bottom of the sidebar. The number is set in pyproject.toml (see utils/about.py)
 st.sidebar.markdown(
