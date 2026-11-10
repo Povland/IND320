@@ -31,7 +31,7 @@ pages = [
 
 navigation = st.navigation(pages)
 
-# Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file, so it is the same widget on every page. The two last ones are added in the next steps
+# Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file, so it is the same widget on every page.
 GLOBAL_SELECTION_PAGES = {"reservoir-data", "reservoir-plot", "seasonality-spectrum", "weather-outliers"}
 if navigation.url_path in GLOBAL_SELECTION_PAGES:
     global_selection()
