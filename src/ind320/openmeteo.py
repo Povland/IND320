@@ -14,7 +14,8 @@
 #      under the minute limit. If the whole job is more than one hour's limit, it is paced by the hour.
 #   4. Each cell is saved as a file as soon as it arrives (data/weather_cells/). A new run skips cells
 #      that are already there, so a stopped download continues where it left off, and a second run
-#      costs no API calls at all.
+#      costs no API calls at all. The cache folder is named after the API settings, and a file only
+#      counts as downloaded if it has all the current variables, so changing either never mixes in old data.
 #
 # Errors: the minute limit is waited out, and server errors or empty answers are tried again.
 # The hourly and daily limits raise RateLimitError, and anything else unusable raises OpenMeteoError,
@@ -22,16 +23,28 @@
 # If Open-Meteo can't deliver a request (e.g. its own timeout), the request is split in two and tried again,
 # down to single cells, so one heavy request or one bad cell doesn't stop the whole download.
 
+import hashlib
 import time
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 import requests
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-# One file per grid cell and time interval: data/weather_cells/<start>-<end>/<lat>_<lon>.parquet.
-# The files don't record which variables they were downloaded with: delete the folder if HOURLY_VARIABLES changes
+# The settings that decide what the API returns, apart from the variables
+API_SETTINGS = {
+    "models": "era5",
+    "timezone": "GMT",
+    "cell_selection": "nearest",
+    "elevation": "nan",
+}
+
+# Downloaded cells: data/weather_cells/<settings code>/<start>-<end>/<lat>_<lon>.parquet.
+# The settings code is a short hash of API_SETTINGS, so files downloaded with other settings are never mixed in.
+# The variables are checked in each file (a parquet file records its columns), so a file that lacks one of
+# HOURLY_VARIABLES counts as not downloaded, and a file with extra variables is still used
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "weather_cells"
 
 # Hourly variables, chosen for what fills and empties the reservoirs.
@@ -85,10 +98,25 @@ def call_weight(n_locations, start, end):
     return n_locations * (n_days / 14) * (len(HOURLY_VARIABLES) / 10)
 
 
+# A short code for the API settings, used as the cache folder name. The same settings always give the same code
+def settings_code():
+    text = "&".join(f"{key}={value}" for key, value in sorted(API_SETTINGS.items()))
+    return hashlib.sha1(text.encode()).hexdigest()[:8]
+
+
 # Where one grid cell's data for one time interval is stored
 def cell_file(latitude, longitude, start, end, cache_dir=CACHE_PATH):
     interval = f"{pd.Timestamp(start):%Y%m%d}-{pd.Timestamp(end):%Y%m%d}"
-    return cache_dir / interval / f"{latitude:.2f}_{longitude:.2f}.parquet"
+    return cache_dir / settings_code() / interval / f"{latitude:.2f}_{longitude:.2f}.parquet"
+
+
+# Whether a cell is downloaded with every one of the current variables. The columns are read from the
+# file's schema, without reading the data, so this is fast even for many cells
+def is_cached(latitude, longitude, start, end, cache_dir=CACHE_PATH):
+    path = cell_file(latitude, longitude, start, end, cache_dir)
+    if not path.exists():
+        return False
+    return set(HOURLY_VARIABLES) <= set(pq.read_schema(path).names)
 
 
 # Fetches hourly ERA5 data for several grid cells in one request. Time is in UTC, like the rest of the project.
@@ -100,10 +128,9 @@ def fetch_batch(session, coordinates, start, end):
         "start_date": pd.Timestamp(start).date().isoformat(),
         "end_date": pd.Timestamp(end).date().isoformat(),
         "hourly": ",".join(HOURLY_VARIABLES),
-        "models": "era5",
-        "timezone": "GMT",
-        "cell_selection": "nearest",
-        "elevation": ",".join(["nan"] * len(coordinates)),
+        **API_SETTINGS,
+        # elevation is one value per location when there are several
+        "elevation": ",".join([API_SETTINGS["elevation"]] * len(coordinates)),
     }
 
     # Up to 4 attempts: the minute limit is waited out, and server errors or empty answers are tried again.
@@ -150,7 +177,8 @@ def fetch_batch(session, coordinates, start, end):
 def load_cells(coordinates, start, end, cache_dir=CACHE_PATH):
     frames = []
     for latitude, longitude in coordinates:
-        hourly = pd.read_parquet(cell_file(latitude, longitude, start, end, cache_dir))
+        # Only the time and the current variables are read, so extra columns in older files are left out
+        hourly = pd.read_parquet(cell_file(latitude, longitude, start, end, cache_dir), columns=["time", *HOURLY_VARIABLES])
         hourly.insert(1, "latitude", latitude)
         hourly.insert(2, "longitude", longitude)
         frames.append(hourly)
@@ -188,14 +216,16 @@ def _download_batch(session, batch, start, end, cache_dir):
 # load=False downloads without reading the cells back (used for many regions at once, see weather.py)
 def fetch_cells(coordinates, start, end, cache_dir=CACHE_PATH, progress=None, load=True):
     coordinates = sorted({(round(lat, 2), round(lon, 2)) for lat, lon in coordinates})
-    missing = [cell for cell in coordinates if not cell_file(*cell, start, end, cache_dir).exists()]
+    missing = [cell for cell in coordinates if not is_cached(*cell, start, end, cache_dir)]
     total = call_weight(len(missing), start, end)
 
     print(f"{len(coordinates)} grid cells: {len(coordinates) - len(missing)} already downloaded, "
           f"{len(missing)} to download (about {total:,.0f} API calls)")
+    # A job bigger than the daily limit is started anyway: it downloads as much as the limit allows, then stops
+    # with RateLimitError. The downloaded cells are kept, so the next run continues from there
     if total > CALLS_PER_DAY:
-        raise ValueError(f"About {total:,.0f} API calls is more than the daily limit of {CALLS_PER_DAY}. "
-                         "Use a shorter interval or fewer cells")
+        print(f"  More than one day's limit ({CALLS_PER_DAY:,} calls): this will stop when the limit is reached, "
+              "and continue from there on the next run")
 
     # As many cells per request as fit under MAX_BATCH_WEIGHT
     batch_size = max(1, int(MAX_BATCH_WEIGHT // call_weight(1, start, end)))

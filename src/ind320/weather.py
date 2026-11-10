@@ -117,6 +117,8 @@ def save_region_weather(db, region, average, points_per_area=areas.POINTS_PER_AR
         "n_cells": len(region_cells(region, points_per_area)),
         "time": average.index.to_pydatetime().tolist(),
         **{variable: average[variable].tolist() for variable in openmeteo.HOURLY_VARIABLES},
+        "variables": list(openmeteo.HOURLY_VARIABLES),
+        "settings": openmeteo.settings_code(),
         "first_hour": average.index[0].to_pydatetime(),
         "last_hour": average.index[-1].to_pydatetime(),
         "source": "ERA5 via Open-Meteo",
@@ -141,20 +143,80 @@ def load_region_weather(db, region, year, points_per_area=areas.POINTS_PER_AREA)
 
 
 # What is stored: one row per region, year and number of locations, with the first and last hour
+# Why a stored document is not complete, or "" if it is: it must have every current variable,
+# come from the current API settings, and cover the whole year up to 31 December 23:00
+def incomplete_reason(variables, settings, year, last_hour):
+    reasons = []
+    if settings != openmeteo.settings_code():
+        reasons.append("other API settings")
+    stored_variables = variables if isinstance(variables, list) else []
+    lacking = [variable for variable in openmeteo.HOURLY_VARIABLES if variable not in stored_variables]
+    if lacking:
+        reasons.append("missing " + ", ".join(lacking))
+    if pd.isna(last_hour) or pd.Timestamp(last_hour) < pd.Timestamp(f"{int(year)}-12-31 23:00"):
+        reasons.append("incomplete year")
+    return "; ".join(reasons)
+
+
+# What is stored: one row per region, year and number of locations, with the variables, the API settings,
+# the first and last hour, and whether it is complete (see incomplete_reason)
 def stored_weather(db):
-    columns = ["region", "area_type", "area_nr", "year", "points_per_area", "first_hour", "last_hour", "stored_at"]
+    columns = ["region", "area_type", "area_nr", "year", "points_per_area", "variables", "settings",
+               "first_hour", "last_hour", "stored_at"]
     documents = db[COLLECTION].find({}, {"_id": 0, **{column: 1 for column in columns}})
-    return pd.DataFrame(list(documents), columns=columns).sort_values(["area_type", "area_nr", "year", "points_per_area"])
+    stored = pd.DataFrame(list(documents), columns=columns)
+    stored["reason"] = [
+        incomplete_reason(row.variables, row.settings, row.year, row.last_hour) for row in stored.itertuples()
+    ]
+    stored["complete"] = stored["reason"] == ""
+    return stored.sort_values(["area_type", "area_nr", "year", "points_per_area"]).reset_index(drop=True)
 
 
-# One-time update of documents stored before the number of locations was part of the key:
-# they were all made with 100 locations, so they get points_per_area = 100. The old unique index
-# (area, year) is removed, since it would stop the same area and year from being stored with another number.
-# Safe to run more than once: it only changes documents without the field. Returns how many were updated
+# What is missing for the given regions, years and number of locations: one row per region and year that is
+# not stored, or stored but not complete, with the reason. Empty table if everything is there
+def missing_weather(db, regions, years, points_per_area=areas.POINTS_PER_AREA):
+    stored = stored_weather(db)
+    stored = stored[stored["points_per_area"] == points_per_area]
+    by_key = {(row.region, int(row.year)): row for row in stored.itertuples()}
+
+    rows = []
+    for year in years:
+        for region in regions:
+            row = by_key.get((region, int(year)))
+            reason = "not stored" if row is None else row.reason
+            if reason:
+                area_type, area_nr = parse_region_id(region)
+                rows.append({"region": region, "area_type": area_type, "area_nr": area_nr,
+                             "year": int(year), "reason": reason})
+    return pd.DataFrame(rows, columns=["region", "area_type", "area_nr", "year", "reason"])
+
+
+# Every variable a document might hold, including ones that are no longer downloaded (for the migration below)
+KNOWN_VARIABLES = [*openmeteo.HOURLY_VARIABLES, "snow_depth"]
+
+
+# One-time update of documents stored before the key and the records were added. Safe to run more than once:
+#   - points_per_area: documents without it were all made with 100 locations
+#   - variables: set from the variable fields each document actually holds
+#   - settings: documents without it were all downloaded with today's API settings
+# The old unique index (area, year) is removed, since it would stop the same area and year from being
+# stored with another number of locations. Returns how many documents were updated
 def migrate_weather_documents(db):
     collection = db[COLLECTION]
     updated = collection.update_many(
         {"points_per_area": {"$exists": False}}, {"$set": {"points_per_area": areas.POINTS_PER_AREA}}
+    ).modified_count
+
+    # variables: added one at a time, only for documents that hold that field
+    without_variables = {"variables": {"$exists": False}}
+    to_record = list(collection.find(without_variables, {"_id": 1, **{variable: 1 for variable in KNOWN_VARIABLES}}))
+    for document in to_record:
+        held = [variable for variable in KNOWN_VARIABLES if variable in document]
+        collection.update_one({"_id": document["_id"]}, {"$set": {"variables": held}})
+    updated += len(to_record)
+
+    updated += collection.update_many(
+        {"settings": {"$exists": False}}, {"$set": {"settings": openmeteo.settings_code()}}
     ).modified_count
 
     for name, index in collection.index_information().items():

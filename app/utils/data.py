@@ -1,4 +1,5 @@
 import sys
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -240,6 +241,13 @@ def load_stored_weather():
                                      "first_hour", "last_hour", "stored_at"])
 
 
+# The stored weather straight from MongoDB, not from the cache, for the checks on Home.
+# The cache is cleared first, so the rest of the app sees the same fresh table afterwards
+def fresh_stored_weather():
+    _fetch_stored_weather.clear()
+    return load_stored_weather()
+
+
 # The years with stored weather data for one area and number of locations, newest first
 def available_weather_years(area_type, area_nr, points_per_area=DEFAULT_POINTS):
     stored = load_stored_weather()
@@ -364,3 +372,97 @@ def load_filling_at(area_type, date):
         return pd.Series(dtype=float), None
     week = of_type.index.max()
     return of_type.loc[[week]].set_index("area_nr")["filling_degree"], week
+
+
+# ---------------------------------------------------------------------------------------------
+# Checking for updates and downloading what is missing. Used by the "Fetch latest data" panels
+# (utils/updates.py) and by Home. A check is free, and only a download uses the API
+# ---------------------------------------------------------------------------------------------
+
+
+# Reservoir data: the latest week in the app's cache, NVE's next publication, and whether that time has passed,
+# so a newer week has probably been published. NVE publishes every Wednesday at 13:00
+def check_reservoirs():
+    data = load_reservoir_data()
+    if data.empty:
+        return {"available": False}
+
+    next_publication = pd.Timestamp(data.iloc[-1]["next_publishing_date"])
+    if next_publication.tzinfo is not None:
+        next_publication = next_publication.tz_convert("Europe/Oslo").tz_localize(None)
+    now = pd.Timestamp.now(tz="Europe/Oslo").tz_localize(None)
+
+    return {
+        "available": True,
+        "latest_week": data.index[-1],
+        "next_publication": next_publication,
+        "newer_expected": now >= next_publication,
+    }
+
+
+# Clears only the reservoir cache, so the next load fetches from NVE again (the rest of the cache is kept)
+def refresh_reservoirs():
+    _fetch_reservoir_data.clear()
+
+
+# Cross-border flow: the period stored in MongoDB. It is downloaded by the Oblig2 notebook, not by the app
+def check_crossborder():
+    period = load_flow_period()
+    return {"available": period is not None, "period": period}
+
+
+# What is missing of the weather data for the given areas ((area_type, area_nr) pairs), years and number of
+# locations, and what downloading it would cost. Returns (missing, cost), where missing has one row per area and
+# year with the reason, and cost has the grid cells, API calls, minutes and days (at 10,000 calls per day).
+# Cells shared by several areas in the same year are counted once, since they are downloaded once
+def check_weather(regions, years, points_per_area=DEFAULT_POINTS):
+    region_ids = [weather.region_id(area_type, nr) for area_type, nr in regions]
+    missing = weather.missing_weather(get_mongo_db(), region_ids, years, points_per_area)
+
+    cells, calls = 0, 0.0
+    for year, group in missing.groupby("year"):
+        unique = weather.unique_cells(group["region"].tolist(), points_per_area)
+        cells += len(unique)
+        calls += openmeteo.call_weight(len(unique), f"{year}-01-01", f"{year}-12-31")
+
+    cost = {
+        "cells": cells,
+        "calls": calls,
+        "minutes": _download_minutes(calls),
+        "days": math.ceil(calls / openmeteo.CALLS_PER_DAY) if calls else 0,
+    }
+    return missing, cost
+
+
+# Downloads what check_weather found missing, one year at a time: all the year's cells first (each shared cell
+# once), then each of the year's areas is stored in MongoDB before the next year starts. So if a limit stops it,
+# every year finished so far is stored, and the next check only finds what is left.
+# progress(fraction, text) is called as it goes, with fraction from 0 to 1 over all the years.
+# Errors (the API limit, the network) are raised, so the page can show them
+def download_missing_weather(missing, points_per_area=DEFAULT_POINTS, progress=None):
+    db = get_mongo_db()
+    years = sorted(int(year) for year in missing["year"].unique())
+
+    try:
+        for number, year in enumerate(years, start=1):
+            regions = missing.loc[missing["year"] == year, "region"].tolist()
+
+            def year_progress(done, total, year=year, number=number):
+                if progress:
+                    fraction = (number - 1 + done / total) / len(years)
+                    progress(fraction, f"{year}: {done} of {total} grid cells ({number} of {len(years)} years)")
+
+            if progress:
+                progress((number - 1) / len(years), f"{year}: checking which cells are already downloaded...")
+
+            averages = weather.download_regions_weather(
+                regions, f"{year}-01-01", f"{year}-12-31", points_per_area=points_per_area, progress=year_progress,
+            )
+            for region, average in averages.items():
+                weather.save_region_weather(db, region, average, points_per_area)
+
+        if progress:
+            progress(1.0, "Done")
+    finally:
+        # Also after an error, so the years that were stored show up right away
+        _clear_weather_caches()
