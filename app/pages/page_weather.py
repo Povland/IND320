@@ -3,12 +3,13 @@ import math
 import requests
 import streamlit as st
 
+from utils.about import weather_data_info
 from utils.controls import area_type_selector, single_area_selector, year_selector
 from utils.data import (
-    anomalies, available_area_numbers, available_weather_years, download_and_store_weather, load_region_weather,
-    openmeteo, weather_download_cost, weather_years,
+    DEFAULT_POINTS, POINT_OPTIONS, anomalies, available_area_numbers, available_weather_years,
+    download_and_store_weather, load_area_shape, load_region_cells, load_region_weather, maps, openmeteo,
+    weather_download_cost, weather_years,
 )
-from utils.about import weather_data_info
 
 st.title("Weather Outliers")
 st.write(
@@ -25,8 +26,10 @@ if not st.session_state["mongo_status"]["connected"]:
     st.warning("Not connected to MongoDB, so the weather data can't be read. See *Database connection* on Home.")
     st.stop()
 
-# Local choices. The area type has no NO, since there is no weather polygon for all of Norway.
-# The page's own memory key makes it start from the global type without changing it
+# ---------------------------------------------------------------------------------------------
+# Local choices: type of area (no NO, since there is no weather polygon for all of Norway), area, number of
+# random locations and year. The page's own memory key makes the type start from the global one without changing it
+# ---------------------------------------------------------------------------------------------
 left, middle, right = st.columns(3)
 with left:
     area_type = area_type_selector("weather", allowed=["EL", "VASS"], memory_key="weather_area_type_memory")
@@ -34,50 +37,84 @@ with middle:
     area_nr = single_area_selector("weather", area_type, available_area_numbers(area_type))
 label = f"{area_type} {area_nr}"
 
-# All complete years can be chosen. The stored ones are marked, the others can be downloaded below
-stored_years = set(available_weather_years(area_type, area_nr))
+points = st.select_slider(
+    "Random locations in the area",
+    options=POINT_OPTIONS, value=DEFAULT_POINTS, key="weather_points",
+    help="More locations cover the area better, but give more grid cells to download. "
+         "Each number is stored separately, so changing it doesn't overwrite anything.",
+)
+
+# All complete years can be chosen. The ones stored for this area and number of locations are marked
+stored_years = set(available_weather_years(area_type, area_nr, points))
 with right:
     year = year_selector(
         "weather", weather_years(),
         format_func=lambda y: f"{y} (stored)" if y in stored_years else str(y),
     )
 
-# Integrated download: if the chosen area and year aren't stored, the page offers to download them.
-# A button and not automatic, since it takes a few minutes and uses the free API's shared daily limit
+# ---------------------------------------------------------------------------------------------
+# The area on a map with its grid cells, and either "stored" or the cost and a download button.
+# The map changes with the slider before anything is downloaded, so you can see what you would pay for
+# ---------------------------------------------------------------------------------------------
+with st.spinner("Preparing the map (the first time takes a few seconds)..."):
+    shape = load_area_shape(area_type, area_nr)
+    cells = load_region_cells(area_type, area_nr, points)
+
+map_column, info_column = st.columns([3, 2], gap="large")
+
+with map_column:
+    st.plotly_chart(maps.area_map(shape, cells), width="stretch")
+    st.caption("Each dot is an ERA5 grid cell. The bigger the dot, the more of the random locations fell in it, "
+               "and the more it counts in the area's average.")
+
+with info_column:
+    st.metric("Random locations", f"{points:,}")
+    st.metric("ERA5 grid cells", f"{len(cells):,}", help="Locations in the same grid cell get the same weather, "
+              "so each cell is downloaded only once.")
+
+    if year in stored_years:
+        st.success(f"Weather for **{label} {year}** with {points:,} locations is stored.")
+    else:
+        # Integrated download: a button and not automatic, since it can take minutes and uses the shared daily limit
+        n_cells, calls, minutes = weather_download_cost(area_type, area_nr, year, points)
+        st.info(
+            f"Weather for **{label} {year}** with {points:,} locations is not stored yet. Downloading it takes about "
+            f"{math.ceil(minutes) + 1} minutes (about {calls:,.0f} of the free API's {openmeteo.CALLS_PER_DAY:,} "
+            "calls per day). It is then stored, so the next visit is instant. Stay on this page while it downloads."
+        )
+
+        if st.button(f"Download {label} {year}", type="primary"):
+            bar = st.progress(0.0, text="Starting the download...")
+
+            def show_progress(done, total):
+                bar.progress(done / total, text=f"{done} of {total} grid cells downloaded")
+
+            try:
+                download_and_store_weather(area_type, area_nr, year, points, progress=show_progress)
+            except openmeteo.RateLimitError as error:
+                st.error(f"The API limit is reached: {error}")
+                st.stop()
+            except (openmeteo.OpenMeteoError, requests.RequestException) as error:
+                st.error(f"Could not download from Open-Meteo: {error}")
+                st.stop()
+
+            # Draws the page again, now with the stored data
+            st.rerun()
+
+# Without stored data there is nothing to analyse yet
 if year not in stored_years:
-    n_cells, calls, minutes = weather_download_cost(area_type, area_nr, year)
-    st.info(
-        f"Weather data for **{label} {year}** is not stored yet. Downloading it takes about "
-        f"{math.ceil(minutes) + 1} minutes ({n_cells} grid cells, about {calls:,.0f} of the free API's "
-        f"{openmeteo.CALLS_PER_DAY:,} calls per day). It is then stored, so the next visit is instant. "
-        "Stay on this page while it downloads."
-    )
-
-    if st.button(f"Download weather data for {label} {year}", type="primary"):
-        bar = st.progress(0.0, text="Starting the download...")
-
-        def show_progress(done, total):
-            bar.progress(done / total, text=f"{done} of {total} grid cells downloaded")
-
-        try:
-            download_and_store_weather(area_type, area_nr, year, progress=show_progress)
-        except openmeteo.RateLimitError as error:
-            st.error(f"The API limit is reached: {error}")
-            st.stop()
-        except (openmeteo.OpenMeteoError, requests.RequestException) as error:
-            st.error(f"Could not download from Open-Meteo: {error}")
-            st.stop()
-
-        # Draws the page again, now with the stored data
-        st.rerun()
+    weather_data_info()
     st.stop()
 
-data = load_region_weather(area_type, area_nr, year)
+data = load_region_weather(area_type, area_nr, year, points)
 if data is None or data.empty:
     st.warning(f"Could not load the weather data for {label} {year}.")
     st.stop()
 
-st.caption(f"{label} {year}: {len(data):,} hours, {data.index[0]:%d.%m.%Y %H:%M} to {data.index[-1]:%d.%m.%Y %H:%M} (UTC).")
+st.caption(
+    f"{label} {year}, {points:,} locations in {len(cells):,} grid cells: {len(data):,} hours, "
+    f"{data.index[0]:%d.%m.%Y %H:%M} to {data.index[-1]:%d.%m.%Y %H:%M} (UTC)."
+)
 
 spc_tab, lof_tab = st.tabs(["Outliers: precipitation (SPC)", "Anomalies: temperature (LOF)"])
 
