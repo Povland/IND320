@@ -8,13 +8,15 @@ import requests
 import streamlit as st
 from pymongo import MongoClient
 
-# ind320 (src/ind320) is installed as a package with uv sync.
-# If the app is run without it installed, the src folder is added to the import path instead
-try:
-    from ind320 import anomalies, areas, maps, nve, openmeteo, seasonal, weather
-except ModuleNotFoundError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-    from ind320 import anomalies, areas, maps, nve, openmeteo, seasonal, weather
+# The app always uses the ind320 code in this repository (src/ind320), not an installed copy of it.
+# Locally, uv sync installs the package as editable, so the two are the same. On Streamlit Cloud the package
+# is installed as a fixed copy, and only reinstalled when the dependencies change, so after a code-only push
+# the installed copy would be out of date. Putting src first on the import path avoids that
+SRC_PATH = Path(__file__).resolve().parents[2] / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from ind320 import anomalies, areas, maps, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
 FLOWS_COLLECTION = "crossborder_flows"
