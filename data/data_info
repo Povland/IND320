@@ -43,3 +43,12 @@ What:     Shapefile with NVE's five regions: RØ, RS, RV, RM, RN.
 Source:   NVE Atlas, https://atlas.nve.no
           Layer: Administrasjon > Administrative områder > NVE_Region
 Download: 09.11.2026
+
+--------------------------------------------------------------------
+Norge_N5000.zip
+--------------------------------------------------------------------
+What:     Land polygon for Norway, scale 1:5 000 000 (coarse coastline).
+          Used to clip the areas to land before sampling locations.
+Source:   NVE Atlas, https://atlas.nve.no (map data from Kartverket)
+          Layer: Administrasjon > Administrative områder > Norge_N5000
+Download: 09.11.2026

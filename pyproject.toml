@@ -39,6 +39,7 @@ dependencies = [
     "nbstripout",
     "python-dotenv>=1.2.4",
     "entsoe-py>=0.8.1",
+    "geopandas>=1.2.0",
 ]
 
 [build-system]
