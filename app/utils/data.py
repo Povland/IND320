@@ -1,5 +1,5 @@
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -11,10 +11,10 @@ from pymongo import MongoClient
 # ind320 (src/ind320) is installed as a package with uv sync.
 # If the app is run without it installed, the src folder is added to the import path instead
 try:
-    from ind320 import anomalies, nve, seasonal, weather
+    from ind320 import anomalies, nve, openmeteo, seasonal, weather
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-    from ind320 import anomalies, nve, seasonal, weather
+    from ind320 import anomalies, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
 FLOWS_COLLECTION = "crossborder_flows"
@@ -248,3 +248,39 @@ def load_region_weather(area_type, area_nr, year):
     except Exception as error:
         st.error(f"Could not read weather data for {weather.region_id(area_type, area_nr)} {year}: {error}")
         return None
+
+
+# The first year offered on the weather page. ERA5 goes back to 1940, but older years are rarely needed here
+WEATHER_FIRST_YEAR = 2015
+
+
+# The years that can be chosen on the weather page, newest first. Only whole years: ERA5 arrives about 5 days late,
+# so a year counts as complete from about 6 January the year after
+def weather_years():
+    last_complete = (datetime.now(timezone.utc) - timedelta(days=6)).year - 1
+    return list(range(last_complete, WEATHER_FIRST_YEAR - 1, -1))
+
+
+# What downloading one area for one year costs: (grid cells, API calls, minutes).
+# The minutes follow the pacing in openmeteo.fetch_cells: by the minute limit if the job fits within one hour's limit.
+# Cells that are already downloaded locally cost nothing, so this is the most it can cost
+def weather_download_cost(area_type, area_nr, year):
+    cells = weather.region_cells(weather.region_id(area_type, area_nr))
+    calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
+    if calls <= 0.9 * openmeteo.CALLS_PER_HOUR:
+        minutes = calls / openmeteo.CALLS_PER_MINUTE
+    else:
+        minutes = calls / openmeteo.CALLS_PER_HOUR * 60
+    return len(cells), calls, minutes
+
+
+# Downloads one area for one year from Open-Meteo, averages it over the area and stores it in MongoDB.
+# progress(done, total) is called after each request, for a progress bar.
+# The weather caches are cleared afterwards, so the page sees the new data right away.
+# Errors (the API limit, the network) are raised, so the page can show them
+def download_and_store_weather(area_type, area_nr, year, progress=None):
+    region = weather.region_id(area_type, area_nr)
+    average = weather.download_region_weather(region, f"{year}-01-01", f"{year}-12-31", progress=progress)
+    weather.save_region_weather(get_mongo_db(), region, average)
+    _fetch_stored_weather.clear()
+    _fetch_region_weather.clear()

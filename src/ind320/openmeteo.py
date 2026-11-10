@@ -3,9 +3,7 @@
 # Strategy for the API limit:
 # The free API allows 600 calls per minute, 5000 per hour and 10000 per day. A request counts as
 # n_locations x (n_days / 14) x (n_variables / 10) calls, so one location for a year with 6 variables
-# is about 16 calls. 
-# 
-# Four things keep the download fast and inside the limit:
+# is about 16 calls. Four things keep the download fast and inside the limit:
 #   1. One request per ERA5 grid cell, not per location: ERA5 is a 0.25° grid, and all locations in
 #      a cell get the same data. cell_selection=nearest makes the API use exactly the cell asked for
 #      (the default picks a "suitable" land cell nearby), and elevation=nan turns off the adjustment
@@ -17,6 +15,12 @@
 #   4. Each cell is saved as a file as soon as it arrives (data/weather_cells/). A new run skips cells
 #      that are already there, so a stopped download continues where it left off, and a second run
 #      costs no API calls at all.
+#
+# Errors: the minute limit is waited out, and server errors or empty answers are tried again.
+# The hourly and daily limits raise RateLimitError, and anything else unusable raises OpenMeteoError,
+# with what Open-Meteo answered in the message.
+# If Open-Meteo can't deliver a request (e.g. its own timeout), the request is split in two and tried again,
+# down to single cells, so one heavy request or one bad cell doesn't stop the whole download.
 
 import time
 from pathlib import Path
@@ -26,16 +30,18 @@ import requests
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-# One file per grid cell and time interval: data/weather_cells/<start>-<end>/<lat>_<lon>.parquet
+# One file per grid cell and time interval: data/weather_cells/<start>-<end>/<lat>_<lon>.parquet.
+# The files don't record which variables they were downloaded with: delete the folder if HOURLY_VARIABLES changes
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "weather_cells"
 
-# Hourly variables, chosen for what fills and empties the reservoirs
+# Hourly variables, chosen for what fills and empties the reservoirs.
+# snow_depth is empty (None) for the era5 model. It is kept for now and handled as missing in the averages
 HOURLY_VARIABLES = [
     "temperature_2m",               # °C, decides rain or snow, and when the snow melts
     "precipitation",                # mm, rain + snow (as water)
     "rain",                         # mm, reaches the reservoirs right away
     "snowfall",                     # cm, stays on the ground until it melts
-    "snow_depth",                   # m, snow stored on the ground
+    "snow_depth",                   # m, snow stored on the ground (empty for era5, see above)
     "et0_fao_evapotranspiration",   # mm, water lost to evaporation
 ]
 
@@ -51,9 +57,22 @@ CALLS_PER_DAY = 10000
 MAX_BATCH_WEIGHT = 500
 
 
-# Raised when the hourly or daily limit is reached. Downloaded cells are kept, so the download can be run again later
-class RateLimitError(RuntimeError):
+# Raised when Open-Meteo doesn't give usable data. The message says what it answered
+class OpenMeteoError(RuntimeError):
     pass
+
+
+# Raised when the hourly or daily limit is reached. Downloaded cells are kept, so the download can be run again later
+class RateLimitError(OpenMeteoError):
+    pass
+
+
+# The reason Open-Meteo gives in an error response, or the start of the text if it isn't JSON
+def _reason(response):
+    try:
+        return response.json().get("reason", "")
+    except ValueError:
+        return response.text[:200]
 
 
 # Rounds coordinates to the nearest ERA5 grid point
@@ -74,8 +93,7 @@ def cell_file(latitude, longitude, start, end, cache_dir=CACHE_PATH):
 
 
 # Fetches hourly ERA5 data for several grid cells in one request. Time is in UTC, like the rest of the project.
-# Returns a list of (latitude, longitude, hourly table), in the same order as the coordinates.
-# The minute limit is waited out (up to 3 times). The hourly and daily limits raise RateLimitError
+# Returns a list of (latitude, longitude, hourly table), in the same order as the coordinates
 def fetch_batch(session, coordinates, start, end):
     params = {
         "latitude": ",".join(f"{lat:.2f}" for lat, _ in coordinates),
@@ -89,22 +107,35 @@ def fetch_batch(session, coordinates, start, end):
         "elevation": ",".join(["nan"] * len(coordinates)),
     }
 
-    for attempt in range(3):
+    # Up to 4 attempts: the minute limit is waited out, and server errors or empty answers are tried again.
+    # The hourly and daily limits stop the download (RateLimitError), since waiting would take too long
+    for attempt in range(4):
         response = session.get(ARCHIVE_URL, params=params, timeout=(10, 300))
-        if response.status_code != 429:
-            break
-        try:
-            reason = response.json().get("reason", "")
-        except ValueError:
-            reason = response.text
-        if "Minutely" not in reason:
-            raise RateLimitError(f"{reason} Downloaded cells are kept, so run again later to continue.")
-        print("  Minute limit reached, waiting 60 s ...")
-        time.sleep(60)
+
+        if response.status_code == 429:
+            reason = _reason(response)
+            if "Minutely" not in reason:
+                raise RateLimitError(f"{reason} Downloaded cells are kept, so run again later to continue.")
+            print("  Minute limit reached, waiting 60 s ...")
+            time.sleep(60)
+            continue
+
+        if response.status_code >= 500 or not response.content:
+            print(f"  Open-Meteo answered {response.status_code} with {len(response.content)} bytes, trying again in 30 s ...")
+            time.sleep(30)
+            continue
+
+        break
+
     response.raise_for_status()
 
-    # One location gives one object, several give a list
-    results = response.json()
+    # One location gives one object, several give a list. Anything else is shown in the error
+    try:
+        results = response.json()
+    except ValueError:
+        raise OpenMeteoError(
+            f"Open-Meteo did not answer with data (status {response.status_code}): {response.text[:200]!r}"
+        ) from None
     if isinstance(results, dict):
         results = [results]
 
@@ -127,9 +158,34 @@ def load_cells(coordinates, start, end, cache_dir=CACHE_PATH):
     return pd.concat(frames, ignore_index=True)
 
 
+# Downloads one batch of cells and saves each cell as a file.
+# If Open-Meteo can't deliver (OpenMeteoError, e.g. its own timeout while streaming the data), the batch is split
+# in two and each half is tried on its own, down to single cells. This works around requests that are too heavy,
+# and isolates a single cell that won't download. The hourly and daily limits (RateLimitError) are not split
+def _download_batch(session, batch, start, end, cache_dir):
+    try:
+        results = fetch_batch(session, batch, start, end)
+    except RateLimitError:
+        raise
+    except OpenMeteoError as error:
+        if len(batch) == 1:
+            latitude, longitude = batch[0]
+            raise OpenMeteoError(f"Grid cell {latitude}, {longitude} could not be downloaded: {error}") from None
+        half = len(batch) // 2
+        print(f"  {error}\n  Trying again as two smaller requests ({half} and {len(batch) - half} cells) ...")
+        _download_batch(session, batch[:half], start, end, cache_dir)
+        _download_batch(session, batch[half:], start, end, cache_dir)
+        return
+
+    for latitude, longitude, hourly in results:
+        path = cell_file(latitude, longitude, start, end, cache_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        hourly.to_parquet(path)
+
+
 # Downloads hourly ERA5 data for a list of (latitude, longitude) grid points and returns all of them.
 # Cells that are already stored are skipped. Each new cell is saved as soon as it arrives.
-# progress(done, total) is called after each request, so the app can show a progress bar later
+# progress(done, total) is called after each request, so the app can show a progress bar
 def fetch_cells(coordinates, start, end, cache_dir=CACHE_PATH, progress=None):
     coordinates = sorted({(round(lat, 2), round(lon, 2)) for lat, lon in coordinates})
     missing = [cell for cell in coordinates if not cell_file(*cell, start, end, cache_dir).exists()]
@@ -153,10 +209,7 @@ def fetch_cells(coordinates, start, end, cache_dir=CACHE_PATH, progress=None):
     session = requests.Session()
     for i in range(0, len(missing), batch_size):
         batch = missing[i:i + batch_size]
-        for latitude, longitude, hourly in fetch_batch(session, batch, start, end):
-            path = cell_file(latitude, longitude, start, end, cache_dir)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            hourly.to_parquet(path)
+        _download_batch(session, batch, start, end, cache_dir)
 
         done = i + len(batch)
         print(f"  {done}/{len(missing)} downloaded")

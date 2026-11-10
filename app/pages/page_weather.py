@@ -1,7 +1,13 @@
+import math
+
+import requests
 import streamlit as st
 
 from utils.controls import area_type_selector, single_area_selector, year_selector
-from utils.data import anomalies, available_area_numbers, available_weather_years, load_region_weather
+from utils.data import (
+    anomalies, available_area_numbers, available_weather_years, download_and_store_weather, load_region_weather,
+    openmeteo, weather_download_cost, weather_years,
+)
 
 st.title("Weather Outliers")
 st.write(
@@ -27,12 +33,43 @@ with middle:
     area_nr = single_area_selector("weather", area_type, available_area_numbers(area_type))
 label = f"{area_type} {area_nr}"
 
-years = available_weather_years(area_type, area_nr)
-if not years:
-    st.info(f"No weather data stored for {label} yet. For now it is downloaded and stored from the notebook (Oblig3).")
-    st.stop()
+# All complete years can be chosen. The stored ones are marked, the others can be downloaded below
+stored_years = set(available_weather_years(area_type, area_nr))
 with right:
-    year = year_selector("weather", years)
+    year = year_selector(
+        "weather", weather_years(),
+        format_func=lambda y: f"{y} (stored)" if y in stored_years else str(y),
+    )
+
+# Integrated download: if the chosen area and year aren't stored, the page offers to download them.
+# A button and not automatic, since it takes a few minutes and uses the free API's shared daily limit
+if year not in stored_years:
+    n_cells, calls, minutes = weather_download_cost(area_type, area_nr, year)
+    st.info(
+        f"Weather data for **{label} {year}** is not stored yet. Downloading it takes about "
+        f"{math.ceil(minutes) + 1} minutes ({n_cells} grid cells, about {calls:,.0f} of the free API's "
+        f"{openmeteo.CALLS_PER_DAY:,} calls per day). It is then stored, so the next visit is instant. "
+        "Stay on this page while it downloads."
+    )
+
+    if st.button(f"Download weather data for {label} {year}", type="primary"):
+        bar = st.progress(0.0, text="Starting the download...")
+
+        def show_progress(done, total):
+            bar.progress(done / total, text=f"{done} of {total} grid cells downloaded")
+
+        try:
+            download_and_store_weather(area_type, area_nr, year, progress=show_progress)
+        except openmeteo.RateLimitError as error:
+            st.error(f"The API limit is reached: {error}")
+            st.stop()
+        except (openmeteo.OpenMeteoError, requests.RequestException) as error:
+            st.error(f"Could not download from Open-Meteo: {error}")
+            st.stop()
+
+        # Draws the page again, now with the stored data
+        st.rerun()
+    st.stop()
 
 data = load_region_weather(area_type, area_nr, year)
 if data is None or data.empty:

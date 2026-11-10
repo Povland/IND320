@@ -177,8 +177,9 @@ def single_area_selector(key, area_type, area_numbers):
     )
 
 
-# Dropdown for choosing one year, newest first. Local: remembered per page
-def year_selector(key, years):
+# Dropdown for choosing one year, newest first. Local: remembered per page.
+# format_func decides how each year is shown (e.g. marking the years that are stored)
+def year_selector(key, years, format_func=str):
     widget_key = f"{key}_year"
     memory_key = f"{key}_year_memory"
     remembered = st.session_state.get(memory_key)
@@ -192,4 +193,4 @@ def year_selector(key, years):
     def remember():
         st.session_state[memory_key] = st.session_state[widget_key]
 
-    return st.selectbox("Year", options=years, key=widget_key, on_change=remember)
+    return st.selectbox("Year", options=years, format_func=format_func, key=widget_key, on_change=remember)
