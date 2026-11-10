@@ -64,3 +64,16 @@ Notes
   for why the download is done per grid cell).
 - NVE data is licensed under NLOD / CC BY 4.0 (credit: NVE).
   Open-Meteo data is CC BY 4.0.
+
+--------------------------------------------------------------------
+grid_cells.csv
+--------------------------------------------------------------------
+What:     Derived, but static. One row per area and ERA5 grid cell:
+          area_type, area_nr, latitude, longitude, n_points.
+          n_points = how many of the area's random locations fell in
+          the cell (its weight when averaging over the area).
+Made by:  Oblig3.ipynb (areas.save_grid_cells), from the three
+          shapefiles above, 100 random locations per area, seed 320,
+          snapped to the 0.25° ERA5 grid.
+Used by:  The Streamlit app and the weather download, so neither has
+          to repeat the sampling. Same inputs give the same file.

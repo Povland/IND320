@@ -21,3 +21,6 @@ data/weather_*.parquet
 
 # Unzipped shapefiles (the zips are what's used)
 data/*/
+
+# Downloaded weather data per ERA5 grid cell (local cache, can be downloaded again)
+data/weather_cells/
