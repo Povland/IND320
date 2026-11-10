@@ -18,8 +18,7 @@ st.write("This is a dashboard for visualizing reservoir data." )
 
 st.subheader("Pages:")
 st.markdown("""
-- *Reservoir Data*: View imported data. One row per area, with line charts for each variable.
-- *Reservoir Plot*: Compare the areas over time in one plot.
+- *Reservoirs*: The filling degree on a map (any week since 1995), the areas compared over time in a plot, and the data as a table.
 - *Seasonality & Spectrum*: How the filling degree of one area is built up: STL decomposition and spectrogram.
 - *Weather Outliers*: Hourly weather for one area and year: outliers in the precipitation (SPC) and anomalies in the temperature (LOF).
 - *Cross-border flow*: Power flows between Norway and its neighbours (ENTSO-E, from MongoDB).

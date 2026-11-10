@@ -70,7 +70,7 @@ It is shown at the bottom of the sidebar and on the About page.
 | `src/ind320/seasonal.py` | STL decomposition and spectrogram of the filling degree |
 | `src/ind320/config.py` | Reads the secret files in `No_sync/` |
 | `app/streamlit_app.py` | Entry point of the app: the page list, the connection test on load, the global selection in the sidebar and the version |
-| `app/pages/` | One file per page: Home, Reservoir Data, Reservoir Plot, Seasonality & Spectrum, Weather Outliers, Cross-border flow and About |
+| `app/pages/` | One file per page: Home, Reservoirs, Seasonality & Spectrum, Weather Outliers, Cross-border flow and About |
 | `app/utils/data.py` | The app's access point to data: NVE's API, MongoDB and the weather downloads, with caching |
 | `app/utils/controls.py` | The global selection in the sidebar (area type, areas, period) and the local selectors on the pages |
 | `app/utils/crossborder.py` | Choosers, titles and figures for the Cross-border flow page |

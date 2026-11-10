@@ -21,8 +21,7 @@ if "mongo_status" not in st.session_state:
 # so the names and the order are decided here
 pages = [
     st.Page("pages/page_home.py", title="Home", default=True),
-    st.Page("pages/page_data.py", title="Reservoir Data", url_path="reservoir-data"),
-    st.Page("pages/page_plot.py", title="Reservoir Plot", url_path="reservoir-plot"),
+    st.Page("pages/page_reservoirs.py", title="Reservoirs", url_path="reservoirs"),
     st.Page("pages/page_seasonal.py", title="Seasonality & Spectrum", url_path="seasonality-spectrum"),
     st.Page("pages/page_weather.py", title="Weather Outliers", url_path="weather-outliers"),
     st.Page("pages/page_cross_border.py", title="Cross-border flow", url_path="cross-border-flow"),
@@ -31,8 +30,9 @@ pages = [
 
 navigation = st.navigation(pages)
 
-# Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file, so it is the same widget on every page.
-GLOBAL_SELECTION_PAGES = {"reservoir-data", "reservoir-plot", "seasonality-spectrum", "weather-outliers"}
+# Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file,
+# so it is the same widget on every page
+GLOBAL_SELECTION_PAGES = {"reservoirs", "seasonality-spectrum", "weather-outliers"}
 if navigation.url_path in GLOBAL_SELECTION_PAGES:
     global_selection()
 
