@@ -33,6 +33,8 @@ It is shown at the bottom of the sidebar and on the About page.
 - ENTSO-E API reference: https://documenter.getpostman.com/view/7009892/2s93JtP3F6
 - ENTSO-E Transparency Platform: https://transparency.entsoe.eu/
 - ENTSO-E security token: https://transparencyplatform.zendesk.com/hc/en-us/articles/12845911031188-How-to-get-security-token
+- Open-Meteo Historical Weather API (ERA5): https://open-meteo.com/en/docs/historical-weather-api
+- NVE Atlas (shapefiles): https://atlas.nve.no
 
 **Services**
 - MongoDB Atlas: https://cloud.mongodb.com/
@@ -65,6 +67,10 @@ It is shown at the bottom of the sidebar and on the About page.
 | `data/reservoirs.csv` | Legacy, only used by Oblig1. The app and Oblig2 use NVE's API |
 | `No_sync/` | Secret files for the notebook. **Not in git** (see below) |
 | `.streamlit/secrets.toml` | Secrets for the Streamlit app. **Not in git** (see below) |
+| `notebooks/Oblig3.ipynb` | Part 3: shapefiles from NVE Atlas, random locations per area and weather data from Open-Meteo |
+| `src/ind320/openmeteo.py` | Open-Meteo download. Explains how the free API limit is handled (fewer locations, one request per ERA5 grid cell, pacing) |
+| `data/Budområder.zip`, `data/NVE_Region.zip`, `data/Norge_N5000.zip` | Shapefiles from NVE Atlas: price areas, NVE regions (merged into the VASS areas) and land of Norway. See `data/data_info` |
+| `data/weather_<region>_<year>.parquet` | Local backup of the weather data, made by Oblig3. **Not in git** |
 
 ## Secret files
 

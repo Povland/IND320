@@ -52,3 +52,15 @@ What:     Land polygon for Norway, scale 1:5 000 000 (coarse coastline).
 Source:   NVE Atlas, https://atlas.nve.no (map data from Kartverket)
           Layer: Administrasjon > Administrative områder > Norge_N5000
 Download: 09.11.2026
+
+--------------------------------------------------------------------
+Notes
+--------------------------------------------------------------------
+- The zip files are read directly with geopandas, no need to unzip.
+- weather_<region>_<year>.parquet files are local backups made by
+  Oblig3.ipynb. They are not raw data and not in git. Each row is one
+  hour in one ERA5 grid cell. n_points says how many of the 100 random
+  locations in the region fell in that cell (see src/ind320/openmeteo.py
+  for why the download is done per grid cell).
+- NVE data is licensed under NLOD / CC BY 4.0 (credit: NVE).
+  Open-Meteo data is CC BY 4.0.
