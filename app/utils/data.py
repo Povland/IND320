@@ -261,17 +261,20 @@ def weather_years():
     return list(range(last_complete, WEATHER_FIRST_YEAR - 1, -1))
 
 
+# How long a download of this many API calls takes, in minutes. Follows the pacing in openmeteo.fetch_cells:
+# by the minute limit if the job fits within one hour's limit, otherwise by the hour limit
+def _download_minutes(calls):
+    if calls <= 0.9 * openmeteo.CALLS_PER_HOUR:
+        return calls / openmeteo.CALLS_PER_MINUTE
+    return calls / openmeteo.CALLS_PER_HOUR * 60
+
+
 # What downloading one area for one year costs: (grid cells, API calls, minutes).
-# The minutes follow the pacing in openmeteo.fetch_cells: by the minute limit if the job fits within one hour's limit.
 # Cells that are already downloaded locally cost nothing, so this is the most it can cost
 def weather_download_cost(area_type, area_nr, year):
     cells = weather.region_cells(weather.region_id(area_type, area_nr))
     calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
-    if calls <= 0.9 * openmeteo.CALLS_PER_HOUR:
-        minutes = calls / openmeteo.CALLS_PER_MINUTE
-    else:
-        minutes = calls / openmeteo.CALLS_PER_HOUR * 60
-    return len(cells), calls, minutes
+    return len(cells), calls, _download_minutes(calls)
 
 
 # Downloads one area for one year from Open-Meteo, averages it over the area and stores it in MongoDB.
@@ -282,5 +285,26 @@ def download_and_store_weather(area_type, area_nr, year, progress=None):
     region = weather.region_id(area_type, area_nr)
     average = weather.download_region_weather(region, f"{year}-01-01", f"{year}-12-31", progress=progress)
     weather.save_region_weather(get_mongo_db(), region, average)
+    _fetch_stored_weather.clear()
+    _fetch_region_weather.clear()
+
+
+# What downloading several areas for one year costs: (unique grid cells, API calls, minutes).
+# Shared cells are counted once, since they are only downloaded once
+def weather_bulk_cost(regions, year):
+    cells = weather.unique_cells([weather.region_id(area_type, nr) for area_type, nr in regions])
+    calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
+    return len(cells), calls, _download_minutes(calls)
+
+
+# Downloads several areas for one year (each shared grid cell once) and stores each area in MongoDB.
+# Nothing is stored until all the cells are downloaded, so an area is never stored half done.
+# If a limit is reached, the downloaded cells are kept locally, and the next attempt continues from there
+def download_and_store_all_weather(regions, year, progress=None):
+    region_ids = [weather.region_id(area_type, nr) for area_type, nr in regions]
+    averages = weather.download_regions_weather(region_ids, f"{year}-01-01", f"{year}-12-31", progress=progress)
+    db = get_mongo_db()
+    for region, average in averages.items():
+        weather.save_region_weather(db, region, average)
     _fetch_stored_weather.clear()
     _fetch_region_weather.clear()

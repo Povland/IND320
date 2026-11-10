@@ -1,11 +1,14 @@
 import calendar
+import math
 
 import pandas as pd
+import plotly.express as px
+import requests
 import streamlit as st
 
 from utils.data import (
-    FLOWS_COLLECTION, available_area_numbers, load_flow_period, load_reservoir_data, load_stored_weather,
-    refresh_data, run_connection_test,
+    FLOWS_COLLECTION, available_area_numbers, download_and_store_all_weather, load_flow_period, load_reservoir_data,
+    load_stored_weather, openmeteo, refresh_data, run_connection_test, weather_bulk_cost, weather_years,
 )
 
 st.title("Reservoir dashboard")
@@ -106,12 +109,74 @@ with st.expander(f"Data status {'✅' if not missing else '⚠️'}"):
         )
 
     # Weather is downloaded on the Weather Outliers page, one area and year at a time, when it is chosen there.
-    # Downloading all missing areas at once from here is not built yet
     st.page_link("pages/page_weather.py", label="Download weather data for an area and year on Weather Outliers", icon="🌦️")
-    st.button(
-        "Download all missing areas (not available yet)", disabled=True,
-        help="All eight areas at once is more than one hour's API limit, so for now they are downloaded one at a time on Weather Outliers.",
-    )
+
+# ---------------------------------------------------------------------------------------------
+# Weather data: what is stored (one bar per area and year), and a download of all missing areas for a chosen year
+# ---------------------------------------------------------------------------------------------
+with st.expander("Weather data"):
+    if not status["connected"]:
+        st.warning("Not connected to MongoDB, so the weather data can't be read or stored. See *Database connection* below.")
+    else:
+        area_labels = [f"{area_type} {nr}" for area_type, nr in expected_regions]
+
+        # Coverage: one row per area, one bar per stored year
+        if stored_weather.empty:
+            st.caption("No weather data stored yet.")
+        else:
+            coverage = pd.DataFrame({
+                "Area": stored_weather["area_type"] + " " + stored_weather["area_nr"].astype(str),
+                "Start": pd.to_datetime(stored_weather["year"].astype(str) + "-01-01"),
+                "End": pd.to_datetime((stored_weather["year"] + 1).astype(str) + "-01-01"),
+                "Year": stored_weather["year"].astype(str),
+            })
+            fig = px.timeline(coverage, x_start="Start", x_end="End", y="Area", hover_data={"Year": True},
+                              title="Stored weather data per area and year")
+            fig.update_traces(marker_color="#2a78d6")
+            # All areas are shown, also those without data, in a fixed order from the top
+            fig.update_yaxes(categoryorder="array", categoryarray=area_labels[::-1], title=None)
+            fig.update_xaxes(dtick="M12", tickformat="%Y", title=None)
+            fig.update_layout(height=320, margin=dict(t=50, b=20))
+            st.plotly_chart(fig, width="stretch")
+
+        # Download of all missing areas for one year
+        year = st.selectbox("Year to complete", weather_years(), key="home_weather_year")
+        stored_for_year = set(zip(
+            stored_weather.loc[stored_weather["year"] == year, "area_type"],
+            stored_weather.loc[stored_weather["year"] == year, "area_nr"],
+        )) if not stored_weather.empty else set()
+        missing_regions = [region for region in expected_regions if region not in stored_for_year]
+
+        if not missing_regions:
+            st.success(f"All {len(expected_regions)} areas are stored for {year}.")
+        else:
+            n_cells, calls, minutes = weather_bulk_cost(missing_regions, year)
+            missing_labels = ", ".join(f"{area_type} {nr}" for area_type, nr in missing_regions)
+            st.info(
+                f"**{len(missing_regions)} areas missing for {year}:** {missing_labels}.\n\n"
+                f"Downloading them takes about {math.ceil(minutes) + 1} minutes ({n_cells} unique grid cells, "
+                f"about {calls:,.0f} of the free API's {openmeteo.CALLS_PER_DAY:,} calls per day). "
+                "Grid cells shared by two areas are downloaded once. Stay on this page while it downloads. "
+                "If a limit is reached, the downloaded cells are kept, and the next click continues from there."
+            )
+
+            if st.button(f"Download all missing areas for {year}", type="primary"):
+                bar = st.progress(0.0, text="Starting the download...")
+
+                def show_progress(done, total):
+                    bar.progress(done / total, text=f"{done} of {total} grid cells downloaded")
+
+                try:
+                    download_and_store_all_weather(missing_regions, year, progress=show_progress)
+                except openmeteo.RateLimitError as error:
+                    st.warning(f"The API limit is reached: {error}")
+                    st.stop()
+                except (openmeteo.OpenMeteoError, requests.RequestException) as error:
+                    st.error(f"Could not download from Open-Meteo: {error}")
+                    st.stop()
+
+                st.toast(f"All missing areas for {year} are downloaded and stored.", icon="✅")
+                st.rerun()
 
 with st.expander("Database connection", expanded=not status["connected"]):   # opens by itself if the test failed
     button_column, box_column = st.columns([1, 3], vertical_alignment="center")

@@ -62,6 +62,35 @@ def download_region_weather(region, start, end, cells=None, progress=None):
     cell_weather = openmeteo.fetch_cells(zip(found["latitude"], found["longitude"]), start, end, progress=progress)
     return region_average(cell_weather, found)
 
+# All regions: the five price areas and the three watercourse areas
+ALL_REGIONS = ["NO1", "NO2", "NO3", "NO4", "NO5", "VASS1", "VASS2", "VASS3"]
+
+
+# The unique grid cells (latitude, longitude) of several regions. EL and VASS cover the same land, so many are shared
+def unique_cells(regions, cells=None):
+    if cells is None:
+        cells = areas.load_grid_cells()
+    found = pd.concat([region_cells(region, cells) for region in regions])
+    return found[["latitude", "longitude"]].drop_duplicates()
+
+
+# Downloads several regions at once: every grid cell is downloaded only once, even if it belongs to more than one region.
+# The cells are downloaded first (without holding them all in memory), then each region's average is computed
+# from its own cells in the cache. Returns {region: hourly average}
+def download_regions_weather(regions, start, end, cells=None, progress=None):
+    if cells is None:
+        cells = areas.load_grid_cells()
+    all_cells = unique_cells(regions, cells)
+    print(f"{len(regions)} regions: {len(all_cells)} unique grid cells")
+    openmeteo.fetch_cells(zip(all_cells["latitude"], all_cells["longitude"]), start, end, progress=progress, load=False)
+
+    averages = {}
+    for region in regions:
+        found = region_cells(region, cells)
+        cell_weather = openmeteo.load_cells(zip(found["latitude"], found["longitude"]), start, end)
+        averages[region] = region_average(cell_weather, found)
+    return averages
+
 
 # Stores one calendar year of a region's average in MongoDB (replaces it if it is already there)
 def save_region_weather(db, region, average):

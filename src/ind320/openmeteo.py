@@ -186,7 +186,8 @@ def _download_batch(session, batch, start, end, cache_dir):
 # Downloads hourly ERA5 data for a list of (latitude, longitude) grid points and returns all of them.
 # Cells that are already stored are skipped. Each new cell is saved as soon as it arrives.
 # progress(done, total) is called after each request, so the app can show a progress bar
-def fetch_cells(coordinates, start, end, cache_dir=CACHE_PATH, progress=None):
+# load=False downloads without reading the cells back (used for many regions at once, see weather.py)
+def fetch_cells(coordinates, start, end, cache_dir=CACHE_PATH, progress=None, load=True):
     coordinates = sorted({(round(lat, 2), round(lon, 2)) for lat, lon in coordinates})
     missing = [cell for cell in coordinates if not cell_file(*cell, start, end, cache_dir).exists()]
     total = call_weight(len(missing), start, end)
@@ -218,4 +219,7 @@ def fetch_cells(coordinates, start, end, cache_dir=CACHE_PATH, progress=None):
         if done < len(missing):
             time.sleep(call_weight(len(batch), start, end) / calls_per_second)
 
+    # load=False only downloads, so a large job doesn't have to hold all the cells in memory at once
+    if not load:
+        return None
     return load_cells(coordinates, start, end, cache_dir)
