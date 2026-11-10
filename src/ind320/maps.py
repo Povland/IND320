@@ -78,18 +78,30 @@ def area_map(area, cells, title=None, height=500):
     return fig
 
 
+# The layout of the overview maps: a plotly "geo" map without background tiles, zoomed to exactly the areas
+# shown (fitbounds), in the Mercator projection like ordinary web maps. Plotly draws the areas itself as shapes,
+# which is what makes the animation work: each frame only recolours the shapes already drawn
+def _geo_layout(fig, title, height, bottom=0):
+    fig.update_geos(fitbounds="locations", visible=False, projection_type="mercator", bgcolor="rgba(0,0,0,0)")
+    fig.update_layout(
+        title=title, height=height,
+        margin=dict(l=0, r=0, t=40 if title else 0, b=bottom),
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+
+
 # All areas of one type (a table from ind320.areas), coloured by values: a dict or Series from area_nr to a value.
-# The areas in selected (area numbers) get an outline on top. value_format is a d3 format, e.g. ".0%"
+# The areas in selected (area numbers) get an outline on top. value_format is a d3 format, e.g. ".0%".
+# Drawn as a plotly geo map (no background tiles), zoomed to fit the areas
 def overview_map(areas, values, selected=(), title=None, label="Value", value_format=".0%", zmin=None, zmax=None, height=600):
     shown = areas.copy()
     shown["value"] = shown["area_nr"].map(values)
     geojson, ids = to_geojson(shown)
-    center, zoom = _view(shown, height)
 
-    fig = go.Figure(go.Choroplethmap(
+    fig = go.Figure(go.Choropleth(
         geojson=geojson, locations=ids, featureidkey="properties.area_id",
         z=shown["value"], zmin=zmin, zmax=zmax, colorscale="Blues",
-        marker_opacity=0.8, marker_line_width=0.8, marker_line_color="white",
+        marker_line_width=0.8, marker_line_color="white",
         colorbar=dict(title=label, tickformat=value_format),
         hovertemplate=f"%{{location}}: %{{z:{value_format}}}<extra></extra>",
         name=label,
@@ -99,60 +111,77 @@ def overview_map(areas, values, selected=(), title=None, label="Value", value_fo
     chosen = shown[shown["area_nr"].isin(list(selected))]
     if not chosen.empty:
         chosen_geojson, chosen_ids = to_geojson(chosen)
-        fig.add_trace(go.Choroplethmap(
+        fig.add_trace(go.Choropleth(
             geojson=chosen_geojson, locations=chosen_ids, featureidkey="properties.area_id",
             z=[0] * len(chosen_ids), colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]], showscale=False,
             marker_line_width=1.5, marker_line_color=CELL_COLOR, hoverinfo="skip", name="Chosen",
         ))
 
-    fig.update_layout(
-        title=title, height=height,
-        map=dict(style=MAP_STYLE, center=center, zoom=zoom),
-        margin=dict(l=0, r=0, t=40 if title else 0, b=0),
-    )
+    _geo_layout(fig, title, height)
     return fig
 
 
+# The play speeds: milliseconds per frame (one frame per week)
+PLAY_SPEEDS = {"Slow": 200, "Normal": 60, "Fast": 12}
+
+# Colours for the play buttons, the slider and the week counter, matching Streamlit's light and dark themes.
+# Plotly's own defaults (white buttons with dark text) don't follow the theme
+CONTROL_COLORS = {
+    False: dict(text="#31333f", background="#f0f2f6", active="#d5dae5", border="#c7ccd6"),   # light
+    True: dict(text="#fafafa", background="#262730", active="#4a4f5c", border="#4a4f5c"),    # dark
+}
+
+
 # The overview map played over time: one frame per row of table (index: dates, columns: area numbers).
-# The map itself is sent to the browser once, and each frame only holds the new colours, so plotly plays it
-# in the browser with its own Play and Pause buttons and slider. frame_ms is how long each frame is shown.
+# The map is sent to the browser once, and each frame only holds the new colours, so plotly plays it in the browser.
+# The speed buttons (Slow, Normal, Fast) are part of the map, not Streamlit widgets, and all continue from the
+# current week, so changing speed doesn't start the animation over.
 # The colour scale must be fixed (zmin, zmax), otherwise the same colour would mean different values in each frame
 def overview_animation(areas, table, selected=(), title=None, label="Value", value_format=".0%",
-                       zmin=0, zmax=1, frame_ms=120, height=600):
+                       zmin=0, zmax=1, speeds=PLAY_SPEEDS, height=600, dark=False):
     weeks = table.index
-    first = table.iloc[0]
-    fig = overview_map(areas, first, selected, title, label, value_format, zmin, zmax, height)
+    fig = overview_map(areas, table.iloc[0], selected, title, label, value_format, zmin, zmax, height)
 
     # The order of the areas in the map, so each frame's values match the right area
     order = areas["area_nr"].tolist()
     names = [f"{week:%Y-%m-%d}" for week in weeks]
 
+    # The week counter: ISO year and week (NVE's own numbering), with the date of the week's Sunday
+    def counter(week):
+        iso = week.isocalendar()
+        return f"{iso.year} : {iso.week:02d}   (week ending {week:%d.%m.%Y})"
+
     # Each frame only changes the colours (z) of the first layer. The outline layer stays as it is
     fig.frames = [
-        go.Frame(name=name, data=[go.Choroplethmap(z=[row.get(nr) for nr in order])], traces=[0])
+        go.Frame(name=name, data=[go.Choropleth(z=[row.get(nr) for nr in order])], traces=[0])
         for name, (_, row) in zip(names, table.iterrows())
     ]
 
-    play = dict(frame=dict(duration=frame_ms, redraw=True), fromcurrent=True, transition=dict(duration=0))
+    # Every play button continues from the current frame (fromcurrent), so switching speed keeps the place
+    def play(frame_ms):
+        return dict(frame=dict(duration=frame_ms, redraw=True), fromcurrent=True, transition=dict(duration=0))
+
     pause = dict(frame=dict(duration=0, redraw=False), mode="immediate", transition=dict(duration=0))
     jump = dict(frame=dict(duration=0, redraw=True), mode="immediate", transition=dict(duration=0))
 
+    _geo_layout(fig, title, height, bottom=100)
+    colors = CONTROL_COLORS[dark]
     fig.update_layout(
-        margin=dict(l=0, r=0, t=40 if title else 0, b=90),
         updatemenus=[dict(
-            type="buttons", direction="left", showactive=False, x=0, y=-0.02, xanchor="left", yanchor="top",
-            buttons=[
-                dict(label="Play", method="animate", args=[None, play]),
-                dict(label="Pause", method="animate", args=[[None], pause]),
-            ],
+            type="buttons", direction="left", showactive=True, x=0, y=-0.02, xanchor="left", yanchor="top",
+            bgcolor=colors["background"], bordercolor=colors["border"], borderwidth=1,
+            font=dict(color=colors["text"]), active=-1,
+            buttons=[dict(label="Pause", method="animate", args=[[None], pause])]
+                    + [dict(label=name, method="animate", args=[None, play(ms)]) for name, ms in speeds.items()],
         )],
         sliders=[dict(
-            active=0, x=0.15, len=0.85, y=-0.02, yanchor="top",
-            currentvalue=dict(prefix="Week ending ", font=dict(size=14)),
-            # The slider has one step per week, too many to label, so the tick labels are hidden
-            # and the current week is shown above the slider instead
-            font=dict(color="rgba(0,0,0,0)"), ticklen=0,
-            steps=[dict(label=f"{week:%d.%m.%Y}", method="animate", args=[[name], jump])
+            active=0, x=0.32, len=0.68, y=-0.02, yanchor="top",
+            bgcolor=colors["background"], bordercolor=colors["border"], activebgcolor=colors["active"],
+            # The week counter above the slider has its own text colour. The slider's tick labels are hidden
+            # (one step per week is too many to label), and without its own colour the counter would be hidden too
+            currentvalue=dict(prefix="", visible=True, xanchor="left", font=dict(size=15, color=colors["text"])),
+            font=dict(color="rgba(0,0,0,0)"), ticklen=0, tickcolor="rgba(0,0,0,0)",
+            steps=[dict(label=counter(week), method="animate", args=[[name], jump])
                    for week, name in zip(weeks, names)],
         )],
     )

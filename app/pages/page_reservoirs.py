@@ -60,21 +60,19 @@ with map_tab:
         period = load_reservoir_period(area_type, all_areas, start, end)
         table = period.pivot_table(index=period.index, columns="area_nr", values="filling_degree")
 
-        speeds = {"Slow": 300, "Normal": 120, "Fast": 50}
-        speed = st.segmented_control("Speed", options=list(speeds), default="Normal", key="reservoirs_map_speed")
-
         if table.empty:
             st.warning("No reservoir data in the chosen period.")
         else:
             fig = maps.overview_animation(
                 shapes, table, selected=area_numbers, label="Filling degree",
-                frame_ms=speeds[speed or "Normal"],
                 title=f"{AREA_TYPES[area_type]}: filling degree, {start:%d.%m.%Y} to {end:%d.%m.%Y}",
             )
             st.plotly_chart(fig, width="stretch")
             st.caption(
-                f"{len(table):,} weeks, the period chosen in the sidebar. Press Play under the map, or drag its slider. "
-                "The colour scale is fixed at 0 to 100 %, so the same colour means the same filling degree in every week."
+                f"{len(table):,} weeks, the period chosen in the sidebar. Press Slow, Normal or Fast under the map "
+                "to play, and switch speed while it plays without losing the place. The counter shows the year and "
+                "ISO week. The colour scale is fixed at 0 to 100 %, so the same colour means the same filling degree "
+                "in every week."
             )
 
     else:
