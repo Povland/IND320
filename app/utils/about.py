@@ -60,11 +60,12 @@ def weather_source():
 hourly ERA5 reanalysis on a 0.25° grid (about 28 × 12 km in Norway), fetched with the modules `ind320.openmeteo` and `ind320.weather`.
 
 Each area (EL 1–5 and VASS 1–3, from shapefiles in [NVE Atlas](https://atlas.nve.no)) is clipped to land,
-and 100 random locations are drawn inside it. The locations are snapped to the ERA5 grid, each grid cell is
-downloaded once, and the area's weather is the average of its cells, weighted by how many locations fell in each.
+and random locations are drawn inside it: 100 by default, up to 1000 on *Weather Outliers*. The locations are snapped
+to the ERA5 grid, each grid cell is downloaded once, and the area's weather is the average of its cells,
+weighted by how many locations fell in each.
 
-The data is downloaded inside the app (on *Weather Outliers* or for all missing areas on *Home*),
-and stored in MongoDB as one document per area and year, so the next visit is instant.
+The data is downloaded inside the app (*Fetch latest data* on *Weather Outliers*, or several areas and years at once
+on *Home*), and stored in MongoDB as one document per area, year and number of locations, so the next visit is instant.
 """)
 
 
@@ -99,7 +100,7 @@ The weather data show what falls on each area, and the flow data show how much i
 
 def pipeline():
     st.markdown("""
-The cross-border data go through several steps before the app reads them (see `notebooks/Oblig2.ipynb`):
+The cross-border data were first fetched and stored by the notebook (see `notebooks/Oblig2.ipynb`), in several steps:
 
 | Step | Where it runs | What it does or holds |
 |---|---|---|
@@ -112,8 +113,16 @@ The cross-border data go through several steps before the app reads them (see `n
 The detour through Cassandra and Spark is there because a deployed app can't reach a database running on my laptop.
 Whatever the app needs has to end up somewhere online, and in a shape the app can read quickly.
 
-The reservoir data take a shorter route: the app calls NVE's API itself and keeps the result for one hour.
+Since then, the app keeps the data up to date itself: *Fetch latest data* on the *Cross-border flow* page fetches
+the new hours from ENTSO-E and stores them straight in MongoDB, grouped with pandas into the same monthly documents
+(`ind320.entsoe`). Cassandra and Spark are only used by the notebook.
+
+The weather takes its own route: Open-Meteo, then one file per grid cell (a local cache, so a stopped download can
+continue), then the average per area, then MongoDB.
+
+The reservoir data take the shortest route: the app calls NVE's API itself and keeps the result for one hour.
 """)
+
 
 
 def areas_table():
@@ -165,14 +174,15 @@ def reservoir_limitations():
 - *Filling degree* is a fraction (0.72 = 72 %), not a percentage.
 - The watercourse areas (VASS) are a hydrological division and don't match the price areas (EL).
 - NVE's API has no date parameters, so the app downloads everything and keeps it for one hour.
-  Use *Refresh data* on Home to get new numbers sooner.
+  Use *Fetch latest data* at the bottom of the page, or *Refresh all cached data* on Home, to get new numbers sooner.
 """)
 
 
 def crossborder_limitations():
     st.markdown("""
-- The data is a snapshot from when the notebook was last run, two years back from then. The app doesn't fetch new data from ENTSO-E itself.
-- The first and last year are therefore partial. *Data status* on Home shows the exact period.
+- The data goes two years back from when it was first fetched, and is extended with *Fetch latest data*.
+  The first year is therefore partial, and so is the current one. *Data status* on Home shows the exact period.
+- Fetching new data needs an ENTSO-E token in the app's secrets. Without it, the app shows what is stored.
 - Borders that report every 15 minutes are averaged to hourly values, so short spikes are smoothed out.
 - Hours without a reported value are left out, not set to zero.
 - When connections are added together, an hour that is missing for one of them makes the total for that hour too low.
@@ -182,12 +192,16 @@ def crossborder_limitations():
 
 def weather_limitations():
     st.markdown("""
-- 100 random locations per area for now. The task asks for 1000, which takes several days of the free API's quota for all areas.
-- `snow_depth` is empty for the ERA5 model, and is shown as missing.
+- The notebook uses 100 random locations per area. The task asks for 1000, which can be chosen on *Weather Outliers*,
+  but downloading every area with 1000 locations takes more than one day of the free API.
+- `snow_depth` is empty for the ERA5 model, so it is not downloaded. Snow is described by the snowfall only.
 - Only whole years can be chosen, since the outlier boundaries are estimated from the whole year.
 - SPC is applied to the precipitation, as the task says. Precipitation is skewed and can't be negative,
   so it gives many outliers above and none below.
-- All users share the free API's daily limit (10,000 calls). One area for one year is about 1,200 calls.
+- All users of the app share the free API's limit (10,000 calls per day). One area for one year with 100 locations
+  is about 700 to 1,200 calls. The app refuses a download bigger than one day's limit, so it has to be done in parts.
+- A download runs while the page is open, and clicking elsewhere stops it. The cells downloaded so far are kept,
+  so pressing *Download missing* again continues where it stopped.
 - Times are in UTC.
 """)
 
@@ -207,20 +221,22 @@ def links():
 """)
 
 
-# The packages the project uses, and what for. The versions are read from what is installed
+# The packages the project uses, and what for. The versions are read from what is installed.
+# The notebook packages are not installed in the app (see pyproject.toml), so the app shows them as notebook only
 PACKAGES = {
     "streamlit": "the app",
     "pandas": "tables and data handling",
-    "plotly": "the plots",
+    "plotly": "the plots and maps",
     "pymongo": "reading from and writing to MongoDB",
     "requests": "NVE's and Open-Meteo's APIs",
+    "pyarrow": "the weather cache files (parquet)",
     "geopandas": "the shapefiles and the random locations",
     "scipy": "the DCT and the spectrogram",
     "scikit-learn": "the Local Outlier Factor",
     "statsmodels": "STL",
-    "entsoe-py": "ENTSO-E's API (notebook)",
-    "pyspark": "processing the data (notebook)",
-    "cassandra-driver": "Cassandra (notebook)",
+    "entsoe-py": "ENTSO-E's API",
+    "pyspark": "processing the data (Oblig2 notebook)",
+    "cassandra-driver": "Cassandra (Oblig2 notebook)",
 }
 
 
@@ -230,7 +246,7 @@ def tech_stack():
         try:
             installed = version(package)
         except PackageNotFoundError:
-            installed = "not installed"
+            installed = "only in the notebook"
         rows.append({"Package": package, "Version": installed, "Used for": used_for})
     st.dataframe(pd.DataFrame(rows), hide_index=True)
 

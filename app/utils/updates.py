@@ -157,11 +157,14 @@ def weather_panel(key, regions, years, points_per_area):
             f"{openmeteo.CALLS_PER_DAY:,} per day), about {cost['minutes']:.0f} minutes. "
             "Grid cells shared by several areas in the same year are downloaded once. Stay on this page while it downloads."
         )
-        if cost["days"] > 1:
+        # A job bigger than one day of the free API is refused: it would run for hours while the page is open, and use
+        # up the limit every user of the app shares. It can still be done in parts, a few areas or years at a time
+        if cost["calls"] > openmeteo.CALLS_PER_DAY:
             st.warning(
-                f"This is about {cost['days']} days of the free API. It downloads one year at a time and stores each year "
-                "when it is done, so when the daily limit is reached it stops, and the next download continues from there."
+                f"This is about {cost['days']} days of the free API ({openmeteo.CALLS_PER_DAY:,} calls per day), "
+                "more than the app downloads at once. Choose fewer areas or years, and download them in parts."
             )
+            return
 
         if st.button("Download missing", key=f"{state_key}_download", type="primary"):
             bar = st.progress(0.0, text="Starting the download...")

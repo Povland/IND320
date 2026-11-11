@@ -5,14 +5,14 @@ import plotly.express as px
 import streamlit as st
 
 from utils.data import (
-    DEFAULT_POINTS, FLOWS_COLLECTION, POINT_OPTIONS, available_area_numbers, check_crossborder, check_reservoirs,
-    fresh_stored_weather, load_stored_weather, refresh_data, refresh_reservoirs, run_connection_test, weather_years,
+    DEFAULT_POINTS, FLOWS_COLLECTION, POINT_OPTIONS, check_crossborder, check_reservoirs, fresh_stored_weather,
+    load_stored_weather, refresh_data, refresh_reservoirs, run_connection_test, weather, weather_years,
 )
 from utils.updates import weather_panel
 
-st.title("Reservoir dashboard")
-st.header("Home")
-st.write("This is a dashboard for visualizing reservoir data." )
+st.title("Reservoirs, power flow and weather")
+st.write("A dashboard for Norway's hydropower reservoirs, the power flow to and from the neighbouring countries, "
+         "and the weather over the price and watercourse areas.")
 
 
 st.subheader("Pages:")
@@ -29,8 +29,9 @@ The type of area, the areas and the period are chosen in the sidebar on the page
 
 st.info("This dashboard is a work in progress. More features will be added in the future.")
 
-# All areas that can have weather data: EL 1-5 and VASS 1-3 (no weather polygon for all of Norway)
-expected_regions = [("EL", nr) for nr in available_area_numbers("EL")] + [("VASS", nr) for nr in available_area_numbers("VASS")]
+# All areas that can have weather data: EL 1-5 and VASS 1-3 (no weather polygon for all of Norway).
+# Taken from ind320.weather, not from the reservoir data, so the list is right even when NVE doesn't answer
+expected_regions = [weather.parse_region_id(region) for region in weather.ALL_REGIONS]
 area_labels = {f"{area_type} {nr}": (area_type, nr) for area_type, nr in expected_regions}
 
 
@@ -70,7 +71,7 @@ with st.expander("Connection details" if status["connected"] else "Connection er
         if details["flow_documents"]:
             st.success(f"Cross-border data found: {details['flow_documents']:,} documents in `{FLOWS_COLLECTION}`.")
         else:
-            st.warning(f"No documents in `{FLOWS_COLLECTION}`. Run the ENTSO-E part of the notebook first.")
+            st.warning(f"No documents in `{FLOWS_COLLECTION}`. Fetch them on the Cross-border flow page.")
 
 
 # ---------------------------------------------------------------------------------------------
