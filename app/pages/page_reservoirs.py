@@ -55,6 +55,13 @@ with map_tab:
         help="Plays the period chosen in the sidebar week by week, with Play and Pause under the map.",
     )
 
+    # The same layout in both modes, so nothing moves when the toggle is switched: the map in the left column
+    # (same width and height, so the same zoom), the controls under the map, and the numbers in the right column.
+    # map_slot is created first so the map ends up above the controls, even though it is drawn after them
+    map_column, info_column = st.columns([3, 1], gap="large")
+    with map_column:
+        map_slot = st.container()
+
     if animate:
         # One row per week, one column per area: the filling degree of every area of the type, not only the chosen ones
         all_areas = available_area_numbers(area_type)
@@ -62,13 +69,29 @@ with map_tab:
         table = period.pivot_table(index=period.index, columns="area_nr", values="filling_degree")
 
         if table.empty:
-            st.warning("No reservoir data in the chosen period.")
+            map_slot.warning("No reservoir data in the chosen period.")
         else:
+            dark = st.context.theme.type == "dark"
             fig = maps.overview_animation(
-                shapes, table, selected=area_numbers, label="Filling degree",
+                shapes, table, selected=area_numbers, label="Filling degree", dark=dark,
                 title=f"{AREA_TYPES[area_type]}: filling degree, {start:%d.%m.%Y} to {end:%d.%m.%Y}",
             )
-            st.plotly_chart(fig, width="stretch")
+            map_slot.plotly_chart(fig, width="stretch")
+
+            # The period and how much the chosen areas changed over it, in the same place as the week's numbers
+            with info_column:
+                st.markdown(f"**Period**\n\n### {len(table):,} weeks")
+                st.caption(f"{table.index[0]:%d.%m.%Y} to {table.index[-1]:%d.%m.%Y}")
+                for area_nr in area_numbers:
+                    values = table[area_nr].dropna() if area_nr in table else pd.Series(dtype=float)
+                    if values.empty:
+                        continue
+                    st.metric(
+                        f"{area_type} {area_nr}, last week",
+                        f"{values.iloc[-1]:.0%}",
+                        delta=f"{(values.iloc[-1] - values.iloc[0]) * 100:+.1f} pp over the period",
+                    )
+
             st.caption(
                 f"{len(table):,} weeks, the period chosen in the sidebar. Press Slow, Normal or Fast under the map "
                 "to play, and switch speed while it plays without losing the place. The counter shows the year and "
@@ -84,24 +107,27 @@ with map_tab:
         # warning about a widget getting its value twice
         if st.session_state.get("reservoirs_map_week") not in weeks:
             st.session_state["reservoirs_map_week"] = weeks[-1]
-        chosen_week = st.select_slider(
-            "Week", options=weeks, key="reservoirs_map_week",
-            format_func=lambda date: f"{date:%d.%m.%Y}",
-            help="Drag to see the filling degree in any week since 1995. The period in the sidebar doesn't affect this.",
-        )
+
+        # The week slider sits under the map, where the play controls are in the animation, in a box with the same
+        # height. 16 px is subtracted for the gap Streamlit puts between the map and the box
+        with map_column:
+            with st.container(height=maps.CONTROLS_HEIGHT - 16, border=False):
+                chosen_week = st.select_slider(
+                    "Week", options=weeks, key="reservoirs_map_week",
+                    format_func=lambda date: f"{date:%d.%m.%Y}",
+                    help="Drag to see the filling degree in any week since 1995. "
+                         "The period in the sidebar doesn't affect this.",
+                )
 
         filling, week = load_filling_at(area_type, chosen_week)
         if filling.empty:
-            st.warning(f"No reservoir data for {AREA_TYPES[area_type]} in that week.")
+            map_slot.warning(f"No reservoir data for {AREA_TYPES[area_type]} in that week.")
         else:
-            map_column, info_column = st.columns([3, 1], gap="large")
-
-            with map_column:
-                fig = maps.overview_map(
-                    shapes, filling, selected=area_numbers, label="Filling degree", zmin=0, zmax=1,
-                    title=f"{AREA_TYPES[area_type]}: filling degree",
-                )
-                st.plotly_chart(fig, width="stretch")
+            fig = maps.overview_map(
+                shapes, filling, selected=area_numbers, label="Filling degree", zmin=0, zmax=1,
+                title=f"{AREA_TYPES[area_type]}: filling degree",
+            )
+            map_slot.plotly_chart(fig, width="stretch")
 
             # The week and the chosen areas' numbers, to the right of the map
             with info_column:

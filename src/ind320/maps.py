@@ -121,7 +121,9 @@ def overview_map(areas, values, selected=(), title=None, label="Value", value_fo
     return fig
 
 
-# The play speeds: milliseconds per frame (one frame per week)
+# The height (in pixels) of the play controls under the animated map. The page uses the same height for the week
+# slider under the static map, so the map and the controls are in the same place in both modes
+CONTROLS_HEIGHT = 100
 PLAY_SPEEDS = {"Slow": 200, "Normal": 60, "Fast": 12}
 
 # Colours for the play buttons, the slider and the week counter, matching Streamlit's light and dark themes.
@@ -164,7 +166,9 @@ def overview_animation(areas, table, selected=(), title=None, label="Value", val
     pause = dict(frame=dict(duration=0, redraw=False), mode="immediate", transition=dict(duration=0))
     jump = dict(frame=dict(duration=0, redraw=True), mode="immediate", transition=dict(duration=0))
 
-    _geo_layout(fig, title, height, bottom=100)
+    # height is the map's own height, as in overview_map. The controls are added below it, so the map has exactly
+    # the same size (and zoom) as the static map, and only the figure grows
+    _geo_layout(fig, title, height + CONTROLS_HEIGHT, bottom=CONTROLS_HEIGHT)
     colors = CONTROL_COLORS[dark]
     fig.update_layout(
         updatemenus=[dict(
