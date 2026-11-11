@@ -124,7 +124,7 @@ def overview_map(areas, values, selected=(), title=None, label="Value", value_fo
 # The height (in pixels) of the play controls under the animated map. The page uses the same height for the week
 # slider under the static map, so the map and the controls are in the same place in both modes
 CONTROLS_HEIGHT = 100
-PLAY_SPEEDS = {"Slow": 200, "Normal": 60, "Fast": 12}
+PLAY_SPEEDS = {"Slow": 200, "Normal": 40, "Fast": 4}
 
 # Colours for the play buttons, the slider and the week counter, matching Streamlit's light and dark themes.
 # Plotly's own defaults (white buttons with dark text) don't follow the theme
