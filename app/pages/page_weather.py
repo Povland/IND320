@@ -1,15 +1,12 @@
-import math
-
-import requests
 import streamlit as st
 
 from utils.about import weather_data_info
 from utils.controls import area_type_selector, single_area_selector, year_selector
 from utils.data import (
     DEFAULT_POINTS, POINT_OPTIONS, anomalies, available_area_numbers, available_weather_years,
-    download_and_store_weather, load_area_shape, load_region_cells, load_region_weather, maps, openmeteo,
-    weather_download_cost, weather_years,
+    load_area_shape, load_region_cells, load_region_weather, maps, weather_years,
 )
+from utils.updates import weather_panel
 
 st.title("Weather Outliers")
 st.write(
@@ -44,16 +41,17 @@ points = st.select_slider(
          "Each number is stored separately, so changing it doesn't overwrite anything.",
 )
 
-# All complete years can be chosen. The ones stored for this area and number of locations are marked
-stored_years = set(available_weather_years(area_type, area_nr, points))
+# All complete years can be chosen. The ones stored and complete for this area and number of locations are marked
+complete_years = set(available_weather_years(area_type, area_nr, points))
 with right:
     year = year_selector(
         "weather", weather_years(),
-        format_func=lambda y: f"{y} (stored)" if y in stored_years else str(y),
+        format_func=lambda y: f"{y} (stored)" if y in complete_years else str(y),
     )
 
 # ---------------------------------------------------------------------------------------------
-# The area on a map with its grid cells, and either "stored" or the cost and a download button.
+# The area on a map with its grid cells, and the "Fetch latest data" panel: it checks whether the chosen
+# area, year and number of locations is stored and complete, and if not, downloads it with a progress bar.
 # The map changes with the slider before anything is downloaded, so you can see what you would pay for
 # ---------------------------------------------------------------------------------------------
 with st.spinner("Preparing the map (the first time takes a few seconds)..."):
@@ -72,40 +70,18 @@ with info_column:
     st.metric("ERA5 grid cells", f"{len(cells):,}", help="Locations in the same grid cell get the same weather, "
               "so each cell is downloaded only once.")
 
-    if year in stored_years:
+    if year in complete_years:
         st.success(f"Weather for **{label} {year}** with {points:,} locations is stored.")
     else:
-        # Integrated download: a button and not automatic, since it can take minutes and uses the shared daily limit
-        n_cells, calls, minutes = weather_download_cost(area_type, area_nr, year, points)
-        st.info(
-            f"Weather for **{label} {year}** with {points:,} locations is not stored yet. Downloading it takes about "
-            f"{math.ceil(minutes) + 1} minutes (about {calls:,.0f} of the free API's {openmeteo.CALLS_PER_DAY:,} "
-            "calls per day). It is then stored, so the next visit is instant. Stay on this page while it downloads."
-        )
+        st.info(f"Weather for **{label} {year}** with {points:,} locations is not stored, or not complete. "
+                "Press *Fetch latest data* below to see what is missing and what it costs.")
 
-        if st.button(f"Download {label} {year}", type="primary"):
-            bar = st.progress(0.0, text="Starting the download...")
-
-            def show_progress(done, total):
-                bar.progress(done / total, text=f"{done} of {total} grid cells downloaded")
-
-            try:
-                download_and_store_weather(area_type, area_nr, year, points, progress=show_progress)
-            except openmeteo.RateLimitError as error:
-                st.error(f"The API limit is reached: {error}")
-                st.stop()
-            except (openmeteo.OpenMeteoError, requests.RequestException) as error:
-                st.error(f"Could not download from Open-Meteo: {error}")
-                st.stop()
-
-            # Draws the page again, now with the stored data
-            st.rerun()
-
-# Without stored data there is nothing to analyse yet
-if year not in stored_years:
+# Without complete data there is nothing to analyse yet. The panel is drawn here, since the page stops before the bottom
+if year not in complete_years:
+    weather_panel("weather", [(area_type, area_nr)], [year], points)
     weather_data_info()
     st.stop()
-
+    
 data = load_region_weather(area_type, area_nr, year, points)
 if data is None or data.empty:
     st.warning(f"Could not load the weather data for {label} {year}.")
@@ -191,5 +167,8 @@ with lof_tab:
 
     with st.expander(f"The {summary['n_outliers']} anomalies, most unusual first"):
         st.dataframe(outliers.round(3), width="stretch")
+
+# Checks whether the chosen area, year and number of locations is stored and complete, and downloads it if not
+weather_panel("weather", [(area_type, area_nr)], [year], points)
 
 weather_data_info()

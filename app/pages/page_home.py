@@ -144,7 +144,7 @@ else:
         else:
             (first_year, first_month), (last_year, last_month) = result["period"]
             st.success(f"{calendar.month_name[first_month]} {first_year} to {calendar.month_name[last_month]} {last_year}.")
-            st.caption("Downloaded by the Oblig2 notebook, not by the app.")
+            st.caption("Fetch new data on the Cross-border flow page.")
 
     # Weather: how many of the areas are stored and complete for the newest complete year, with the default
     # number of locations, and whether any stored document is incomplete

@@ -9,6 +9,7 @@ from utils.crossborder import (
     year_selector, years_text,
 )
 from utils.data import load_connections, load_hourly_flows, load_months, load_yearly_totals, load_years
+from utils.updates import crossborder_panel
 
 st.title("Cross-border flow")
 st.write(
@@ -33,8 +34,10 @@ except Exception as error:   # missing secrets, network, IP not allowed in Atlas
     st.error(f"Could not read from MongoDB: {error}")
     st.stop()
 
+# Nothing stored yet: the panel is the only way to get data, so it is drawn here before the page stops
 if not connections:
-    st.warning("No cross-border data in MongoDB yet. Run the ENTSO-E part of the notebook first.")
+    st.warning("No cross-border data in MongoDB yet. Fetch it from ENTSO-E below.")
+    crossborder_panel("crossborder")
     st.stop()
 
 
@@ -153,5 +156,7 @@ else:
         width="stretch",
     )
 
-# Where the data comes from. The text is shared with the About page (utils/about.py)
+# Checks the last hour stored in MongoDB, and fetches new data from ENTSO-E
+crossborder_panel("crossborder")
+
 crossborder_data_info()

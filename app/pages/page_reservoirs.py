@@ -8,6 +8,7 @@ from utils.data import (
     available_area_numbers, available_dates, load_area_shapes, load_filling_at, load_reservoir_data,
     load_reservoir_period, maps, refresh_data,
 )
+from utils.updates import reservoir_panel
 
 st.title("Reservoirs")
 st.write(
@@ -188,5 +189,8 @@ with data_tab:
     # The underlying numbers, for those who want to look closer
     with st.expander("Show the data as a table"):
         st.dataframe(data, width="stretch")
+
+# Checks whether NVE has published a newer week than the one in the app's cache, and fetches it
+reservoir_panel("reservoirs")
 
 reservoir_data_info()

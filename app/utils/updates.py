@@ -9,7 +9,8 @@ import requests
 import streamlit as st
 
 from utils.data import (
-    check_crossborder, check_reservoirs, check_weather, download_missing_weather, openmeteo, refresh_reservoirs,
+    check_crossborder, check_reservoirs, check_weather, download_crossborder, download_missing_weather, openmeteo,
+    refresh_reservoirs,
 )
 
 
@@ -57,7 +58,8 @@ def reservoir_panel(key):
 
 
 # ---------------------------------------------------------------------------------------------
-# Cross-border flow (ENTSO-E, via MongoDB): only checked here. It is downloaded by the Oblig2 notebook
+# Cross-border flow (ENTSO-E, via MongoDB): checks the last hour stored, and fetches what is new from ENTSO-E.
+# The app goes straight from ENTSO-E to MongoDB (see ind320.entsoe). The Oblig2 notebook goes through Cassandra and Spark
 # ---------------------------------------------------------------------------------------------
 def crossborder_panel(key):
     state_key = f"updates_{key}_crossborder"
@@ -68,25 +70,53 @@ def crossborder_panel(key):
             return
 
         if st.button("Fetch latest data", key=f"{state_key}_check",
-                     help="Shows which months of cross-border flow are stored in MongoDB"):
+                     help="Checks the last hour of cross-border flow stored in MongoDB"):
             st.session_state[state_key] = {"request": None, "result": check_crossborder()}
 
         stored = _stored_check(state_key, None)
         if stored is None:
-            st.caption("Cross-border flow from ENTSO-E, stored in MongoDB by the Oblig2 notebook.")
+            st.caption("Cross-border flow from ENTSO-E, stored in MongoDB.")
             return
 
         result = stored["result"]
-        if not result["available"]:
-            st.warning("No cross-border data is stored yet.")
+        if result["available"]:
+            (first_year, first_month), _ = result["period"]
+            stored_text = f"Stored from {first_month:02d}.{first_year} to {result['last_hour'].tz_convert('Europe/Oslo'):%d.%m.%Y %H:00}."
         else:
-            (first_year, first_month), (last_year, last_month) = result["period"]
-            st.info(
-                f"Stored: {first_month:02d}.{first_year} to {last_month:02d}.{last_year}. New data is downloaded by "
-                "the Oblig2 notebook (it needs the ENTSO-E token), not by the app."
-            )
+            stored_text = "Nothing is stored yet."
 
+        if not result["newer_expected"]:
+            st.success(f"Up to date. {stored_text}")
+            return
 
+        behind = f" about {result['behind'].days} days behind" if result["behind"] is not None else ""
+        st.info(f"{stored_text} That is{behind}, so there is newer data at ENTSO-E." if behind
+                else f"{stored_text} The last two years can be fetched from ENTSO-E.")
+
+        if not result["has_token"]:
+            st.warning("The app has no ENTSO-E token, so it can't fetch new data. Add `[entsoe]` with `token = \"...\"` "
+                       "to the secrets (.streamlit/secrets.toml, or Settings → Secrets on Streamlit Cloud).")
+            return
+
+        st.caption("Fetches all 9 connections in both directions from the start of the newest stored month, "
+                   "and replaces those months. Usually under a minute.")
+        if st.button("Download missing", key=f"{state_key}_download", type="primary"):
+            bar = st.progress(0.0, text="Starting the download...")
+
+            def show_progress(done, total):
+                bar.progress(done / total, text=f"{done} of {total} series fetched from ENTSO-E")
+
+            try:
+                start, end, n_documents = download_crossborder(progress=show_progress)
+            except Exception as error:   # the token, the network, ENTSO-E's own errors...
+                st.error(f"Could not fetch from ENTSO-E: {error}")
+                return
+
+            del st.session_state[state_key]
+            st.toast(f"Fetched {start:%d.%m.%Y} to {end:%d.%m.%Y}: {n_documents} monthly documents stored.", icon="✅")
+            st.rerun()
+
+            
 # ---------------------------------------------------------------------------------------------
 # Weather (Open-Meteo, via MongoDB): checks the given areas, years and number of locations,
 # shows what is missing and what it costs, and downloads it with a progress bar

@@ -7,15 +7,20 @@ Philip A. K. Øvland
 
 ## Setup
 
-**The app** only needs the dependencies and `.streamlit/secrets.toml` (see *Secret files* below):
+**The app** only needs the app's dependencies and `.streamlit/secrets.toml` (see *Secret files* below):
 ```
-uv sync     # dependencies + the ind320 package
+uv sync     # the app's dependencies + the ind320 package
 uv run streamlit run app/streamlit_app.py
 ```
 
-**The Oblig3 notebook** (`notebooks/Oblig3.ipynb`) only needs the dependencies and `No_sync/atlas-credentials.env`.
+**The notebooks** also need the notebook packages (Jupyter kernel, matplotlib, Cassandra and Spark). They are kept in their own group in `pyproject.toml`, so Streamlit Cloud doesn't install them:
+```
+uv sync --all-groups     # everything, including the notebook packages
+```
+A plain `uv sync` removes the notebook packages again, so use `--all-groups` when working with the notebooks.
 
-**The Oblig2 notebook** (`notebooks/Oblig2.ipynb`) also needs Cassandra and Spark:
+- `notebooks/Oblig3.ipynb` also needs `No_sync/atlas-credentials.env`.
+- `notebooks/Oblig2.ipynb` also needs `No_sync/atlas-credentials.env`, `No_sync/entsoe.env`, and Cassandra and Spark:
 ```
 docker run --name my_cassandra -p 9042:9042 -d cassandra:latest     # first time (later: docker start my_cassandra)
 ```

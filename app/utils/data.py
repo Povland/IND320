@@ -17,7 +17,7 @@ SRC_PATH = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from ind320 import anomalies, areas, maps, nve, openmeteo, seasonal, weather
+from ind320 import anomalies, areas, entsoe, maps, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
 FLOWS_COLLECTION = "crossborder_flows"
@@ -237,8 +237,8 @@ def load_stored_weather():
         return _fetch_stored_weather()
     except Exception as error:   # missing secrets, network, IP not allowed in Atlas...
         st.error(f"Could not read the stored weather data from MongoDB: {error}")
-        return pd.DataFrame(columns=["region", "area_type", "area_nr", "year", "points_per_area",
-                                     "first_hour", "last_hour", "stored_at"])
+        return pd.DataFrame(columns=["region", "area_type", "area_nr", "year", "points_per_area", "variables", 
+                                     "settings", "first_hour", "last_hour", "stored_at", "reason", "complete"])
 
 
 # The stored weather straight from MongoDB, not from the cache, for the checks on Home.
@@ -248,10 +248,12 @@ def fresh_stored_weather():
     return load_stored_weather()
 
 
-# The years with stored weather data for one area and number of locations, newest first
+# The years with complete weather data for one area and number of locations, newest first.
+# A stored year that lacks a variable, comes from other API settings or stops before 31 December doesn't count
 def available_weather_years(area_type, area_nr, points_per_area=DEFAULT_POINTS):
     stored = load_stored_weather()
-    match = (stored["area_type"] == area_type) & (stored["area_nr"] == area_nr) & (stored["points_per_area"] == points_per_area)
+    match = ((stored["area_type"] == area_type) & (stored["area_nr"] == area_nr)
+             & (stored["points_per_area"] == points_per_area) & (stored["complete"] == True))
     return sorted(stored.loc[match, "year"].astype(int).tolist(), reverse=True)
 
 
@@ -405,10 +407,37 @@ def refresh_reservoirs():
     _fetch_reservoir_data.clear()
 
 
-# Cross-border flow: the period stored in MongoDB. It is downloaded by the Oblig2 notebook, not by the app
+# Cross-border flow: the period stored in MongoDB, the last hour stored, and whether that is more than a couple of
+# hours behind (ENTSO-E publishes with about an hour's delay). Also whether the app has an ENTSO-E token to update with
 def check_crossborder():
     period = load_flow_period()
-    return {"available": period is not None, "period": period}
+    collection = get_mongo_db()[FLOWS_COLLECTION]
+    last_hour = entsoe.last_stored_hour(collection)
+    now = pd.Timestamp.now(tz="UTC")
+    return {
+        "available": period is not None,
+        "period": period,
+        "last_hour": last_hour,
+        "behind": (now - last_hour) if last_hour is not None else None,
+        "newer_expected": last_hour is None or now - last_hour > pd.Timedelta(hours=3),
+        "has_token": "entsoe" in st.secrets and "token" in st.secrets["entsoe"],
+    }
+
+
+# Clears the caches of the cross-border data, so the page sees new months right away
+def _clear_flow_caches():
+    for cached in [load_connections, load_years, load_months, load_flow_period, load_yearly_totals, load_hourly_flows]:
+        cached.clear()
+
+
+# Fetches new cross-border flows from ENTSO-E (from the start of the newest stored month up to now) and stores them
+# in MongoDB. progress(done, total) is called after each of the 18 series. Errors are raised, so the page can show them
+def download_crossborder(progress=None):
+    client = entsoe.get_client(st.secrets["entsoe"]["token"])
+    try:
+        return entsoe.update_crossborder(get_mongo_db()[FLOWS_COLLECTION], client, progress=progress)
+    finally:
+        _clear_flow_caches()
 
 
 # What is missing of the weather data for the given areas ((area_type, area_nr) pairs), years and number of

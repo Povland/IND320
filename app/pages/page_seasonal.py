@@ -4,6 +4,8 @@ from utils.controls import get_global_selection, single_area_selector
 from utils.data import load_filling_series, seasonal
 from utils.about import seasonal_data_info
 
+from utils.updates import reservoir_panel
+
 st.title("Seasonality & Spectrum")
 st.write(
     "How the filling degree of one area is built up over time. The type of area, the areas and the period "
@@ -117,5 +119,8 @@ with spectrogram_tab:
             f"overlap {window_overlap} weeks. Frequency resolution {resolution:.2f} cycles per year, "
             f"a new window every {step} weeks, {power.shape[1]} windows in total."
         )
+
+# Checks whether NVE has published a newer week than the one in the app's cache, and fetches it
+reservoir_panel("seasonal")
 
 seasonal_data_info()

@@ -1,46 +1,34 @@
 [project]
 name = "IND320"
 version = "3.00"
+# pyspark 3.5.1 (Oblig2) does not support newer Python versions
 requires-python = ">=3.11,<3.12"
+
+# What the Streamlit app and the ind320 package need. This is all Streamlit Cloud installs (uv sync)
 dependencies = [
-    "ipykernel",
-    "pip",
-    "jupyter-book",
-    "jupyterlab",
-    "jupyterlab-deck",
-    "jupyterlab_myst",
-    "matplotlib",
-    "numpy",
-    "setuptools",
-    "pandas",
-    "openpyxl",
-    "datetime",
-    "requests",
-    "river",
-    "cassandra-driver",
-    "pyspark==3.5.1",
-    "mysql.connector",
-    "flask",
-    "pybaselines",
-    "pyjstat",
-    "statsmodels",
-    "hoggorm",
-    "hoggormplot",
-    "scikit-learn",
-    "ipywidgets",
-    "plotly",
-    "anywidget",
-    "pydub",
-    "sounddevice",
-    "kaleido",
-    "lorem",
-    "pymongo",
     "streamlit",
-    "nbstripout",
-    "python-dotenv>=1.2.4",
+    "pandas",
+    "numpy",
+    "pyarrow",
+    "plotly",
+    "requests",
+    "pymongo",
     "entsoe-py>=0.8.1",
     "geopandas>=1.2.0",
+    "shapely",
     "scipy>=1.17.1",
+    "scikit-learn",
+    "statsmodels",
+]
+
+[dependency-groups]
+# Only for the notebooks (Oblig1-3): the Jupyter kernel, matplotlib, and Cassandra and Spark for Oblig2.
+# Not installed on Streamlit Cloud. Install everything locally with: uv sync --all-groups
+notebook = [
+    "ipykernel",
+    "matplotlib",
+    "cassandra-driver",
+    "pyspark==3.5.1",
 ]
 
 [build-system]
