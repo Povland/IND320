@@ -15,15 +15,25 @@ MAP_STYLE = "carto-positron"
 
 AREA_COLOR = "#2a78d6"      # blue, as in the other plots
 CELL_COLOR = "#eb6834"      # orange, for what stands out
+MAP_TOLERANCE = 0.01
 
 
 # The areas as GeoJSON for plotly, in latitude and longitude, simplified by tolerance degrees (0.01° is about 1 km).
 # Each area gets an id like "EL 3", which the maps use to match values to areas
-def to_geojson(areas, tolerance=0.01):
+def to_geojson(areas, tolerance=MAP_TOLERANCE):
     simple = areas.to_crs(4326)[["area_type", "area_nr", "geometry"]].copy()
     simple["geometry"] = simple.geometry.simplify(tolerance, preserve_topology=True)
     simple["area_id"] = simple["area_type"] + " " + simple["area_nr"].astype(str)
     return json.loads(simple.to_json()), simple["area_id"].tolist()
+
+
+# The areas ready to draw: in latitude and longitude, and simplified. This is the slow part of to_geojson, so the app
+# does it once per type of area and keeps the result (utils/data.py). to_geojson then has almost nothing left to do,
+# since simplifying an outline that is already simplified changes almost nothing
+def prepare_for_map(areas, tolerance=MAP_TOLERANCE):
+    prepared = areas.to_crs(4326)
+    prepared["geometry"] = prepared.geometry.simplify(tolerance, preserve_topology=True)
+    return prepared
 
 
 # Latitude in degrees -> the y coordinate of the Mercator projection the map uses, also in degrees.

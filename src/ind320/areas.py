@@ -6,7 +6,7 @@
 #     East = RS + RØ (1), West = RV (2), North = RM + RN (3)
 # Both are clipped to land (Norge_N5000.zip without the sea), and random locations are sampled inside each.
 # The locations are snapped to the ERA5 grid, which gives one row per area and grid cell (grid_cells).
-# The result is saved as data/grid_cells.csv, so the app can use it without repeating the sampling.
+# The app computes the grid cells itself with grid_cells_for (cached), for any number of locations.
 
 from functools import lru_cache
 from pathlib import Path
@@ -24,7 +24,6 @@ DATA_PATH = Path(__file__).resolve().parents[2] / "data"
 PRICE_AREAS_FILE = "Budområder.zip"
 REGIONS_FILE = "NVE_Region.zip"
 LAND_FILE = "Norge_N5000.zip"
-GRID_CELLS_FILE = "grid_cells.csv"
 
 # NVE's five regions -> the three watercourse areas (VASS area_nr)
 REGION_TO_VASS = {"RS": 1, "RØ": 1, "RV": 2, "RM": 3, "RN": 3}
@@ -156,16 +155,6 @@ def _grid_cells_for(points_per_area, seed):
 
 
 # The grid cells of every area for a given number of random locations per area, computed once per number.
-# Same shapefiles, same order, same seed: for 100 locations this gives exactly the same cells as data/grid_cells.csv
+# Same shapefiles, same order, same seed: this gives exactly the same cells as build_grid_cells (checked in Oblig3)
 def grid_cells_for(points_per_area=POINTS_PER_AREA, seed=SEED):
     return _grid_cells_for(points_per_area, seed).copy()
-
-
-# Saves the grid cells to data/grid_cells.csv (made once by the notebook, used by the app)
-def save_grid_cells(cells, data_path=DATA_PATH):
-    cells.to_csv(data_path / GRID_CELLS_FILE, index=False)
-
-
-# Reads data/grid_cells.csv. Only needs pandas, no shapefiles
-def load_grid_cells(data_path=DATA_PATH):
-    return pd.read_csv(data_path / GRID_CELLS_FILE)

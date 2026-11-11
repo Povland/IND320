@@ -30,6 +30,7 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 import requests
+import uuid
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
@@ -45,6 +46,7 @@ API_SETTINGS = {
 # The settings code is a short hash of API_SETTINGS, so files downloaded with other settings are never mixed in.
 # The variables are checked in each file (a parquet file records its columns), so a file that lacks one of
 # HOURLY_VARIABLES counts as not downloaded, and a file with extra variables is still used
+# Each file is written under a temporary name and renamed when complete, so a stopped download never leaves a broken file
 CACHE_PATH = Path(__file__).resolve().parents[2] / "data" / "weather_cells"
 
 # Hourly variables, chosen for what fills and empties the reservoirs.
@@ -111,12 +113,18 @@ def cell_file(latitude, longitude, start, end, cache_dir=CACHE_PATH):
 
 
 # Whether a cell is downloaded with every one of the current variables. The columns are read from the
-# file's schema, without reading the data, so this is fast even for many cells
+# file's schema, without reading the data, so this is fast even for many cells.
+# A file that can't be read (e.g. from an older version that was stopped while writing) counts as not downloaded,
+# so it is downloaded again and replaced
 def is_cached(latitude, longitude, start, end, cache_dir=CACHE_PATH):
     path = cell_file(latitude, longitude, start, end, cache_dir)
     if not path.exists():
         return False
-    return set(HOURLY_VARIABLES) <= set(pq.read_schema(path).names)
+    try:
+        names = pq.read_schema(path).names
+    except (OSError, ValueError):     # pyarrow's errors for broken or half-written files
+        return False
+    return set(HOURLY_VARIABLES) <= set(names)
 
 
 # Fetches hourly ERA5 data for several grid cells in one request. Time is in UTC, like the rest of the project.
@@ -204,10 +212,14 @@ def _download_batch(session, batch, start, end, cache_dir):
         _download_batch(session, batch[half:], start, end, cache_dir)
         return
 
+    # Each cell is written under a temporary name and renamed when the file is complete. The rename is a single step,
+    # so the real name only ever holds a whole file. The random part keeps two sessions writing the same cell apart
     for latitude, longitude, hourly in results:
         path = cell_file(latitude, longitude, start, end, cache_dir)
         path.parent.mkdir(parents=True, exist_ok=True)
-        hourly.to_parquet(path)
+        temporary = path.with_name(f"{path.stem}.{uuid.uuid4().hex}.tmp")
+        hourly.to_parquet(temporary)
+        temporary.replace(path)
 
 
 # Downloads hourly ERA5 data for a list of (latitude, longitude) grid points and returns all of them.

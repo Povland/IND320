@@ -1,7 +1,9 @@
 DATA FOLDER - IND320
 ====================
 
-This folder holds static raw data files. They are not changed by the code.
+This folder holds static raw data files, which the code reads but never
+changes. The code also writes two local caches here (see the end),
+which are not in git.
 
 --------------------------------------------------------------------
 reservoirs.csv
@@ -23,7 +25,7 @@ Areas:    omrType = NO   -> all of Norway (omrnr 0)
 Used by:  Only Oblig1. The app and Oblig2 fetch the same data from the API.
 
 --------------------------------------------------------------------
-<budomrader>.zip
+Budområder.zip
 --------------------------------------------------------------------
 What:     Shapefile with the electricity price areas (bidding zones)
           NO1-NO5. Matches omrType = EL in reservoirs.csv.
@@ -32,7 +34,7 @@ Source:   NVE Atlas, https://atlas.nve.no
 Download: 09.11.2026
 
 --------------------------------------------------------------------
-<nve_region>.zip
+NVE_Region.zip
 --------------------------------------------------------------------
 What:     Shapefile with NVE's five regions: RØ, RS, RV, RM, RN.
           Used as the precipitation areas that match omrType = VASS:
@@ -47,33 +49,39 @@ Download: 09.11.2026
 --------------------------------------------------------------------
 Norge_N5000.zip
 --------------------------------------------------------------------
-What:     Land polygon for Norway, scale 1:5 000 000 (coarse coastline).
-          Used to clip the areas to land before sampling locations.
+What:     Land cover map of Norway, scale 1:5 000 000 (coarse coastline),
+          including the sea ("Havflate"). The sea is removed in code, and
+          what is left is used to clip the areas to land before
+          sampling locations.
 Source:   NVE Atlas, https://atlas.nve.no (map data from Kartverket)
           Layer: Administrasjon > Administrative områder > Norge_N5000
 Download: 09.11.2026
 
 --------------------------------------------------------------------
+Local caches (written by the code, not in git)
+--------------------------------------------------------------------
+weather_cells/
+          Hourly ERA5 weather from Open-Meteo, one parquet file per
+          grid cell and time interval:
+          weather_cells/<settings code>/<start>-<end>/<lat>_<lon>.parquet
+          The settings code is a short hash of the API settings, so data
+          downloaded with other settings is never mixed in. Lets a stopped
+          download continue where it left off. Written by
+          src/ind320/openmeteo.py (the app and Oblig3). Can be deleted:
+          it is downloaded again when needed.
+
+entsoe_flows.parquet
+          Local backup of the cross-border flows downloaded by Oblig2,
+          so the notebook doesn't have to fetch them again (about 25
+          minutes). Delete it to fetch fresh data.
+
+--------------------------------------------------------------------
 Notes
 --------------------------------------------------------------------
 - The zip files are read directly with geopandas, no need to unzip.
-- weather_<region>_<year>.parquet files are local backups made by
-  Oblig3.ipynb. They are not raw data and not in git. Each row is one
-  hour in one ERA5 grid cell. n_points says how many of the 100 random
-  locations in the region fell in that cell (see src/ind320/openmeteo.py
-  for why the download is done per grid cell).
+- The grid cells of each area (which ERA5 cells its random locations
+  fall in, and how many) are computed from the three shapefiles by
+  src/ind320/areas.py, with a fixed seed, so they are the same every
+  time and don't need to be stored.
 - NVE data is licensed under NLOD / CC BY 4.0 (credit: NVE).
   Open-Meteo data is CC BY 4.0.
-
---------------------------------------------------------------------
-grid_cells.csv
---------------------------------------------------------------------
-What:     Derived, but static. One row per area and ERA5 grid cell:
-          area_type, area_nr, latitude, longitude, n_points.
-          n_points = how many of the area's random locations fell in
-          the cell (its weight when averaging over the area).
-Made by:  Oblig3.ipynb (areas.save_grid_cells), from the three
-          shapefiles above, 100 random locations per area, seed 320,
-          snapped to the 0.25° ERA5 grid.
-Used by:  The Streamlit app and the weather download, so neither has
-          to repeat the sampling. Same inputs give the same file.

@@ -85,7 +85,10 @@ def area_number_selector(key, area_type, area_numbers):
     return chosen
 
 
-# Slider for choosing which weeks of data to use
+# Slider for choosing which weeks of data to use.
+# The remembered period is given with value=, not set through session_state: a range slider only knows it has two
+# handles from value=, and Streamlit warns when a widget gets its value both ways. While the slider is shown it keeps
+# its own state, and value= puts the remembered period back when the sidebar is drawn again after another page
 def period_selector(key, dates):
     widget_key = f"{key}_period"
     full_period = (dates[0], dates[-1])
@@ -94,12 +97,11 @@ def period_selector(key, dates):
     remembered = st.session_state.get("period_memory", full_period)
     if remembered[0] not in dates or remembered[1] not in dates:
         remembered = full_period
-    _restore(widget_key, remembered)
 
     start, end = st.select_slider(
         "Period",
         options=dates,
-        value=full_period,   # tells Streamlit this is a range slider (two handles)
+        value=remembered,
         format_func=lambda date: date.strftime("%Y-%m-%d"),
         key=widget_key,
     )

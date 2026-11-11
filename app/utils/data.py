@@ -19,8 +19,9 @@ if str(SRC_PATH) not in sys.path:
 
 from ind320 import anomalies, areas, entsoe, maps, nve, openmeteo, seasonal, weather
 
-# The MongoDB collection with the cross-border flows, written by notebooks/Oblig2.ipynb
-FLOWS_COLLECTION = "crossborder_flows"
+# The MongoDB collection with the cross-border flows: written by notebooks/Oblig2.ipynb, and kept up to date by the
+# app (ind320.entsoe). The name comes from the package, so it is only written in one place
+FLOWS_COLLECTION = entsoe.FLOWS_COLLECTION
 
 
 # Caches the result for one hour, since the data only changes weekly.
@@ -124,9 +125,8 @@ def refresh_data():
 
 
 # ---------------------------------------------------------------------------------------------
-# Cross-border flows (ENTSO-E), prepared in the notebook with Spark and stored in MongoDB.
-# One document per connection, year, month and direction, with the hours as lists (time, mwh)
-# and the month's total (total_mwh). See notebooks/Oblig2.ipynb.
+# Cross-border flows (ENTSO-E) in MongoDB: first stored by the Oblig2 notebook (through Cassandra and Spark),
+# then kept up to date by the app (straight from ENTSO-E, see ind320.entsoe).
 # ---------------------------------------------------------------------------------------------
 
 
@@ -287,50 +287,10 @@ def _download_minutes(calls):
     return calls / openmeteo.CALLS_PER_HOUR * 60
 
 
-# What downloading one area for one year costs: (grid cells, API calls, minutes).
-# Cells that are already downloaded locally cost nothing, so this is the most it can cost
-def weather_download_cost(area_type, area_nr, year, points_per_area=DEFAULT_POINTS):
-    cells = weather.region_cells(weather.region_id(area_type, area_nr), points_per_area)
-    calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
-    return len(cells), calls, _download_minutes(calls)
-
-
-# What downloading several areas for one year costs: (unique grid cells, API calls, minutes).
-# Shared cells are counted once, since they are only downloaded once
-def weather_bulk_cost(regions, year, points_per_area=DEFAULT_POINTS):
-    cells = weather.unique_cells([weather.region_id(area_type, nr) for area_type, nr in regions], points_per_area)
-    calls = openmeteo.call_weight(len(cells), f"{year}-01-01", f"{year}-12-31")
-    return len(cells), calls, _download_minutes(calls)
-
-
 # Clears the weather caches, so the pages see newly stored data right away
 def _clear_weather_caches():
     _fetch_stored_weather.clear()
     _fetch_region_weather.clear()
-
-
-# Downloads one area for one year from Open-Meteo, averages it over the area and stores it in MongoDB.
-# progress(done, total) is called after each request, for a progress bar.
-# Errors (the API limit, the network) are raised, so the page can show them
-def download_and_store_weather(area_type, area_nr, year, points_per_area=DEFAULT_POINTS, progress=None):
-    region = weather.region_id(area_type, area_nr)
-    average = weather.download_region_weather(region, f"{year}-01-01", f"{year}-12-31",
-                                              points_per_area=points_per_area, progress=progress)
-    weather.save_region_weather(get_mongo_db(), region, average, points_per_area)
-    _clear_weather_caches()
-
-
-# Downloads several areas for one year (each shared grid cell once) and stores each area in MongoDB.
-# Nothing is stored until all the cells are downloaded, so an area is never stored half done.
-# If a limit is reached, the downloaded cells are kept locally, and the next attempt continues from there
-def download_and_store_all_weather(regions, year, points_per_area=DEFAULT_POINTS, progress=None):
-    region_ids = [weather.region_id(area_type, nr) for area_type, nr in regions]
-    averages = weather.download_regions_weather(region_ids, f"{year}-01-01", f"{year}-12-31",
-                                                points_per_area=points_per_area, progress=progress)
-    db = get_mongo_db()
-    for region, average in averages.items():
-        weather.save_region_weather(db, region, average, points_per_area)
-    _clear_weather_caches()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -340,15 +300,20 @@ def download_and_store_all_weather(regions, year, points_per_area=DEFAULT_POINTS
 # ---------------------------------------------------------------------------------------------
 
 
-# The shapes of all areas of one type, clipped to land. "NO" (all of Norway) has no shape of its own,
-# so it is the five price areas merged into one
+# The shapes of all areas of one type, clipped to land and ready to draw (latitude and longitude, simplified).
+# "NO" (all of Norway) has no shape of its own, so it is the five price areas merged into one.
+# Cached, so the merging, converting and simplifying happen once per type of area, not on every rerun
+# (e.g. each move of the week slider). cache_data hands out a copy each time, so a page can't change the cached table
+@st.cache_data(show_spinner=False)
 def load_area_shapes(area_type):
     land = areas.land_areas()
     if area_type == "NO":
-        norway = land[land["area_type"] == "EL"].dissolve().reset_index(drop=True)
-        norway["area_type"], norway["area_nr"] = "NO", 0
-        return norway[["area_type", "area_nr", "geometry"]]
-    return land[land["area_type"] == area_type].reset_index(drop=True)
+        shapes = land[land["area_type"] == "EL"].dissolve().reset_index(drop=True)
+        shapes["area_type"], shapes["area_nr"] = "NO", 0
+        shapes = shapes[["area_type", "area_nr", "geometry"]]
+    else:
+        shapes = land[land["area_type"] == area_type].reset_index(drop=True)
+    return maps.prepare_for_map(shapes)
 
 
 # The shape of one area, as a one-row table
