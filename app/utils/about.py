@@ -34,8 +34,8 @@ def reservoir_source():
 It publishes how full the Norwegian hydropower reservoirs are, one measurement per area per week{since}.
 New figures arrive every Wednesday at 13:00.
 
-Part 1 of this project read a CSV copy of that data. Part 2 calls the API directly instead,
-so the app is never out of date. The CSV is only kept so that the Part 1 notebook still runs.
+Part 1 of this project read a CSV copy of that data. From Part 2 on, the API is called directly instead,
+so the app is never out of date. The CSV was removed in Part 4 (see the README).
 """)
 
 
@@ -54,6 +54,7 @@ in both directions:
 "Out of Norway" is flow from the Norwegian price area to the foreign area, "Into Norway" the opposite.
 """)
 
+
 def weather_source():
     st.markdown("""
 **Weather** comes from [Open-Meteo's Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api):
@@ -66,6 +67,15 @@ weighted by how many locations fell in each.
 
 The data is downloaded inside the app (*Fetch latest data* on *Weather Outliers*, or several areas and years at once
 on Data status), and stored in MongoDB as one document per area, year and number of locations, so the next visit is instant.
+""")
+
+
+def currency_source():
+    st.markdown("""
+**Exchange rates** come from [Norges Bank's open data API](https://www.norges-bank.no/en/topics/Statistics/open-data/),
+fetched with the module `ind320.norgesbank`, no token needed. Norges Bank publishes one rate per business day at about
+16:00 Norwegian time. The app uses EUR and USD in NOK, daily or averaged per week (weeks ending on Sunday, like NVE's).
+They are fetched straight from the API and kept for one hour, like the reservoir data.
 """)
 
 
@@ -82,12 +92,43 @@ The yearly cycle is at 1 cycle per year. A longer window gives sharper frequenci
 
 def anomaly_methods():
     st.markdown("""
-**SPC on the precipitation:** the season is removed with a DCT high-pass filter, and the boundaries are the median
-± a number of robust standard deviations (1.4826 × MAD) of what is left, estimated from the whole year.
-The season is added back to the boundaries, so they follow it in the plot.
+**SPC:** the season is removed with a DCT high-pass filter, and the boundaries are the median ± a number of robust
+standard deviations (1.4826 × MAD) of what is left, estimated from the whole year. The season is added back to the
+boundaries, so they follow it in the plot. Temperature by default, any weather property can be chosen.
 
-**LOF on the temperature:** the Local Outlier Factor compares each hour with its neighbours in time and temperature,
-and marks the given share of hours that stand out most.
+**LOF:** the Local Outlier Factor compares each hour with its neighbours in time and value, and marks the given share
+of hours that stand out most. Precipitation by default, any weather property can be chosen.
+""")
+
+
+def correlation_methods():
+    st.markdown("""
+**Sliding window correlation** (*Weather vs reservoirs*): the Pearson correlation between a weekly weather property and
+the reservoirs (the filling degree, or its change from last week), in a window that slides one week at a time.
+The weather can be lagged, so each week's reservoir value is compared with the weather some weeks earlier, since rain and
+snowmelt take time to reach the reservoirs. A lag scan shows which lag fits best over the whole period.
+""")
+
+
+def forecast_methods():
+    st.markdown("""
+**Forecast** (*Forecast*): SNARIMAX from the [River](https://riverml.xyz) library, an online version of SARIMAX.
+It is machine learning on lagged values: a linear regression on the past weeks (AR), past errors (MA) and the same
+weeks in earlier years (seasonal, m = 52), trained with stochastic gradient descent one week at a time.
+Weather can be added as exogenous variables. The forecast is dynamic: each forecast week is used as input for the next.
+
+The resolution is weekly, NVE's own. The default (AR(2) with seasonal differencing, 10 years of history, learning rate
+0.01) was the best in backtests from several start points in the notebook, where it was about 40 % better than simply
+using the same week last year. The interval comes from two extra models trained on the quantile loss.
+""")
+
+
+def map_methods():
+    st.markdown("""
+**Maps:** the areas come from NVE Atlas' shapefiles, clipped to land and converted to GeoJSON files (`data/*.geojson`)
+in latitude and longitude, simplified to about 1 km. *Map of Norway* colours them by the filling degree or a weather
+property in a chosen week, and a click selects an area for the other pages. The cross-border flow can be shown as
+arrows. The animated map on *Reservoirs* uses outlines simplified to about 5 km, so it plays smoothly in the browser.
 """)
 
 
@@ -95,6 +136,11 @@ def how_they_fit():
     st.markdown("""
 Reservoirs fill up with rain and snowmelt, and empty when the power is used or sold.
 The weather data show what falls on each area, and the flow data show how much is sold abroad and bought back.
+The exchange rates show what the power is worth abroad: a weak krone makes Norwegian power cheaper to buy.
+
+All four are joined on the same weeks: NVE's weeks run Monday to Sunday in Norwegian time, with the Sunday as the date.
+The hourly weather and flows (stored in UTC) are moved to Norwegian time before they are summed up per week, and the
+daily exchange rates are averaged per week.
 """)
 
 
@@ -113,14 +159,15 @@ The cross-border data were first fetched and stored by the notebook (see `notebo
 The detour through Cassandra and Spark is there because a deployed app can't reach a database running on my laptop.
 Whatever the app needs has to end up somewhere online, and in a shape the app can read quickly.
 
-Since then, the app keeps the data up to date itself: *Fetch latest data* on the *Cross-border flow* page fetches
-the new hours from ENTSO-E and stores them straight in MongoDB, grouped with pandas into the same monthly documents
-(`ind320.entsoe`). Cassandra and Spark are only used by the notebook.
+Since then, the app keeps the data up to date itself: *Fetch latest from all sources* on *Data status*, or
+*Fetch latest data* on the *Cross-border flow* page, fetches the new hours from ENTSO-E and stores them straight in
+MongoDB, grouped with pandas into the same monthly documents (`ind320.entsoe`). Cassandra and Spark are only used by the notebook.
 
 The weather takes its own route: Open-Meteo, then one file per grid cell (a local cache, so a stopped download can
 continue), then the average per area, then MongoDB.
 
-The reservoir data take the shortest route: the app calls NVE's API itself and keeps the result for one hour.
+The reservoir data and the exchange rates take the shortest route: the app calls NVE's and Norges Bank's APIs itself
+and keeps the result for one hour. *Data status* shows how new the data from every source is, and fetches it.
 """)
 
 
@@ -172,16 +219,16 @@ def reservoir_limitations():
 - VASS 4 (Nord-Norge) is in NVE's list of areas, but has no measurements. Only nine of the ten areas carry data.
 - The data is weekly. Each date is the Sunday that ends the ISO week, not the day the values were measured.
 - *Filling degree* is a fraction (0.72 = 72 %), not a percentage.
-- The watercourse areas (VASS) are a hydrological division and don't match the price areas (EL).
 - NVE's API has no date parameters, so the app downloads everything and keeps it for one hour.
-  Use *Fetch latest data* at the bottom of the page, or *Refresh all cached data* Data status, to get new numbers sooner.
+  Use *Fetch now* or *Fetch latest from all sources* on *Data status* to get new numbers sooner.
 """)
 
 
 def crossborder_limitations():
     st.markdown("""
-- The data goes two years back from when it was first fetched, and is extended with *Fetch latest data*.
-  The first year is therefore partial, and so is the current one. *Data status* on Data status shows the exact period.
+- The data goes two years back from when it was first fetched, and is extended from *Data status*.
+  The first year is therefore partial, and so is the current one. *Data status* shows the exact period.
+- The arrows on *Map of Norway* are drawn at approximate positions near the cables and lines, not their exact routes.
 - Fetching new data needs an ENTSO-E token in the app's secrets. Without it, the app shows what is stored.
 - Borders that report every 15 minutes are averaged to hourly values, so short spikes are smoothed out.
 - Hours without a reported value are left out, not set to zero.
@@ -196,13 +243,33 @@ def weather_limitations():
   but downloading every area with 1000 locations takes more than one day of the free API.
 - `snow_depth` is empty for the ERA5 model, so it is not downloaded. Snow is described by the snowfall only.
 - Only whole years can be chosen, since the outlier boundaries are estimated from the whole year.
-- SPC is applied to the precipitation, as the task says. Precipitation is skewed and can't be negative,
-  so it gives many outliers above and none below.
+- Only 100 locations per area are stored for 2024 and 2025, to stay within the free API's limit. So the weather on the
+  map, in the forecast and in the correlation only covers those two years.
+- Precipitation is skewed and can't be negative, so SPC gives many outliers above and almost none below for it.
+  Temperature, the default, fits SPC better.
 - All users of the app share the free API's limit (10,000 calls per day). One area for one year with 100 locations
   is about 700 to 1,200 calls. The app refuses a download bigger than one day's limit, so it has to be done in parts.
 - A download runs while the page is open, and clicking elsewhere stops it. The cells downloaded so far are kept,
   so pressing *Download missing* again continues where it stopped.
 - Times are in UTC.
+""")
+
+
+def forecast_limitations():
+    st.markdown("""
+- With weather as exogenous variables, the training can only use the weeks where weather is stored (2024 and 2025),
+  which is much shorter than the reservoir history. In the tests, 10 years without weather did better than this.
+- Beyond the stored weather, the forecast uses the average weather for the same week of the year, since the real
+  weather of the coming weeks isn't known.
+- The interval is approximate: the quantile models also forecast from their own earlier forecasts.
+- A year is 52.18 weeks on average, so the yearly season (m = 52) drifts by about a day per year.
+""")
+
+
+def currency_limitations():
+    st.markdown("""
+- Norges Bank publishes rates on business days only, so weekends and holidays have no rate.
+- The weekly rate is the average of the business days in the week.
 """)
 
 
@@ -216,6 +283,9 @@ def links():
   [entsoe-py](https://github.com/EnergieID/entsoe-py)
 - **Open-Meteo:** [Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) ·
   [documentation](https://open-meteo.com/en/docs)
+- **Norges Bank:** [open data](https://www.norges-bank.no/en/topics/Statistics/open-data/) ·
+  [API](https://data.norges-bank.no/api/data/EXR/B.EUR+USD.NOK.SP?format=csv&lastNObservations=1&locale=en)
+- **River (SNARIMAX):** [riverml.xyz](https://riverml.xyz)
 - **NVE Atlas (shapefiles):** [atlas.nve.no](https://atlas.nve.no)
 - **Tools:** [Streamlit docs](https://docs.streamlit.io/) · [MongoDB Atlas](https://cloud.mongodb.com/) · [uv](https://docs.astral.sh/uv/)
 """)
@@ -228,12 +298,13 @@ PACKAGES = {
     "pandas": "tables and data handling",
     "plotly": "the plots and maps",
     "pymongo": "reading from and writing to MongoDB",
-    "requests": "NVE's and Open-Meteo's APIs",
+    "requests": "NVE's, Open-Meteo's and Norges Bank's APIs",
     "pyarrow": "the weather cache files (parquet)",
     "geopandas": "the shapefiles and the random locations",
     "scipy": "the DCT and the spectrogram",
     "scikit-learn": "the Local Outlier Factor",
     "statsmodels": "STL",
+    "river": "the forecast (SNARIMAX)",
     "entsoe-py": "ENTSO-E's API",
     "pyspark": "processing the data (Oblig2 notebook)",
     "cassandra-driver": "Cassandra (Oblig2 notebook)",
