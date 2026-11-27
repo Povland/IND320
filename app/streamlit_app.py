@@ -6,8 +6,20 @@ from utils.about import APP_VERSION
 
 # Uses the full width of the window instead of Streamlit's narrow default. Applies to every page
 st.set_page_config(layout="wide")
-# Keeps the content from getting too wide on very large screens
-st.markdown("<style>.block-container { max-width: 1800px; }</style>", unsafe_allow_html=True)
+# Keeps the content from getting too wide on very large screens. And while the app is working (Streamlit marks the
+# page with data-test-script-state="running"), the mouse cursor turns into the system's busy cursor, an arrow with a
+# spinning circle, so it shows that something is happening wherever the mouse is. "progress" (not "wait") still
+# allows clicking. It goes back to normal by itself when the page is done
+st.markdown(
+    """
+    <style>
+    .block-container { max-width: 1800px; }
+    body:has([data-test-script-state="running"]),
+    body:has([data-test-script-state="running"]) * { cursor: progress !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Tests the database connection once each time the page is loaded.
 # st.session_state lasts as long as the browser tab: it is kept when moving between pages,

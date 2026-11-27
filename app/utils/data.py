@@ -17,7 +17,7 @@ SRC_PATH = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from ind320 import norgesbank, anomalies, forecast, areas, entsoe, maps, nve, openmeteo, seasonal, weather
+from ind320 import correlation, norgesbank, anomalies, forecast, areas, entsoe, maps, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows: written by notebooks/Oblig2.ipynb, and kept up to date by the
 # app (ind320.entsoe). The name comes from the package, so it is only written in one place
@@ -210,6 +210,7 @@ def load_hourly_flows(connections, years, months):
 # and how many hours were found. The week is Monday 00:00 to Sunday 23:59 Norwegian time, ending on week_end
 # (a Sunday, like NVE's date_id). Only the one or two months the week touches are read from MongoDB.
 # Empty table if nothing is stored for the week
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_weekly_flows(week_end):
     columns = ["connection", "out_gwh", "in_gwh", "net_gwh", "hours"]
     end = pd.Timestamp(week_end).tz_localize("Europe/Oslo") + pd.Timedelta(days=1)
@@ -306,16 +307,29 @@ def load_region_weather(area_type, area_nr, year, points_per_area=DEFAULT_POINTS
 
 
 # One area's weekly weather (weeks ending on Sunday, like NVE's), from all the complete years stored for the area
-# and number of locations. Used as exogenous variables in the forecast. The hourly years are read from the cache
-# (load_region_weather) and joined before they are made weekly, so the week across New Year is complete.
-# Empty table if no complete year is stored
-def load_weekly_weather(area_type, area_nr, points_per_area=DEFAULT_POINTS):
-    years = sorted(available_weather_years(area_type, area_nr, points_per_area))
-    frames = [load_region_weather(area_type, area_nr, year, points_per_area) for year in years]
+# and number of locations. Used by the map, the forecast and the correlation. The hourly years are joined before they
+# are made weekly, so the week across New Year is complete. Cached, so it is made once per area and number of
+# locations, not on every move of a slider. Errors are raised from here, so a failed load is NOT cached
+@st.cache_data(ttl=3600, show_spinner="Loading weekly weather from MongoDB...")
+def _fetch_weekly_weather(area_type, area_nr, points_per_area):
+    stored = _fetch_stored_weather()
+    match = ((stored["area_type"] == area_type) & (stored["area_nr"] == area_nr)
+             & (stored["points_per_area"] == points_per_area) & (stored["complete"] == True))
+    years = sorted(stored.loc[match, "year"].astype(int).tolist())
+    frames = [_fetch_region_weather(area_type, area_nr, year, points_per_area) for year in years]
     frames = [frame for frame in frames if frame is not None and not frame.empty]
     if not frames:
         return pd.DataFrame()
     return weather.weekly_weather(pd.concat(frames).sort_index())
+
+
+# The same, with a readable message instead of a crash if MongoDB can't be read. Empty table then
+def load_weekly_weather(area_type, area_nr, points_per_area=DEFAULT_POINTS):
+    try:
+        return _fetch_weekly_weather(area_type, area_nr, points_per_area)
+    except Exception as error:
+        st.error(f"Could not read the weather for {weather.region_id(area_type, area_nr)} from MongoDB: {error}")
+        return pd.DataFrame()
 
 
 # The years that can be chosen on the weather pages, newest first. Only whole years: ERA5 arrives about 5 days late,
@@ -333,10 +347,10 @@ def _download_minutes(calls):
     return calls / openmeteo.CALLS_PER_HOUR * 60
 
 
-# Clears the weather caches, so the pages see newly stored data right away
 def _clear_weather_caches():
     _fetch_stored_weather.clear()
     _fetch_region_weather.clear()
+    _fetch_weekly_weather.clear()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -455,7 +469,8 @@ def check_crossborder():
 
 # Clears the caches of the cross-border data, so the page sees new months right away
 def _clear_flow_caches():
-    for cached in [load_connections, load_years, load_months, load_flow_period, load_yearly_totals, load_hourly_flows]:
+    for cached in [load_connections, load_years, load_months, load_flow_period, load_yearly_totals, load_hourly_flows,
+                   load_weekly_flows]:
         cached.clear()
 
 
@@ -526,53 +541,6 @@ def download_missing_weather(missing, points_per_area=DEFAULT_POINTS, progress=N
         _clear_weather_caches()
 
 
-# The main map (Home): all areas of one type on a map background, coloured transparently by values (a dict or Series
-# from area_nr to a value), with the selected area (an area_nr, or None) outlined thick in orange.
-# Three layers, so every area can be clicked, even one without a value:
-#   1. the outlines of all areas, with a transparent fill (gets the click where there is no value)
-#   2. the values, partly transparent so the map shows through
-#   3. the selected area's outline, which ignores the mouse ("skip"), so a click goes to the layer below
-def selection_map(areas, values, selected=None, title=None, label="Value", value_format=".0%", colorscale="Blues",
-                  zmin=None, zmax=None, height=600, dark=False):
-    geojson, ids = to_geojson(areas)
-    center, zoom = _view(areas, height)
-    transparent = [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]]
-
-    fig = go.Figure()
-    fig.add_trace(go.Choroplethmap(
-        geojson=geojson, locations=ids, featureidkey="properties.area_id", z=[0] * len(ids),
-        colorscale=transparent, showscale=False, marker_line_width=1, marker_line_color="#8a8f98",
-        hovertemplate="%{location}: no value<extra></extra>", name="Areas",
-    ))
-
-    shown = areas.assign(value=areas["area_nr"].map(values)).dropna(subset=["value"])
-    if not shown.empty:
-        value_geojson, value_ids = to_geojson(shown)
-        fig.add_trace(go.Choroplethmap(
-            geojson=value_geojson, locations=value_ids, featureidkey="properties.area_id", z=shown["value"],
-            zmin=zmin, zmax=zmax, colorscale=colorscale, marker_opacity=0.6,
-            marker_line_width=1, marker_line_color="white",
-            colorbar=dict(title=label, tickformat=value_format),
-            hovertemplate=f"%{{location}}: %{{z:{value_format}}}<extra></extra>", name=label,
-        ))
-
-    chosen = areas[areas["area_nr"] == selected] if selected is not None else areas.iloc[0:0]
-    if not chosen.empty:
-        chosen_geojson, chosen_ids = to_geojson(chosen)
-        fig.add_trace(go.Choroplethmap(
-            geojson=chosen_geojson, locations=chosen_ids, featureidkey="properties.area_id", z=[0],
-            colorscale=transparent, showscale=False, marker_line_width=4, marker_line_color=CELL_COLOR,
-            hoverinfo="skip", name="Selected",
-        ))
-
-    fig.update_layout(
-        title=title, height=height, showlegend=False, clickmode="event+select",
-        map=dict(style="carto-darkmatter" if dark else MAP_STYLE, center=center, zoom=zoom),
-        margin=dict(l=0, r=0, t=40 if title else 0, b=0),
-    )
-    return fig
-
-
 # ---------------------------------------------------------------------------------------------
 # Exchange rates from Norges Bank (ind320.norgesbank). Fetched straight from the API, no token needed
 # ---------------------------------------------------------------------------------------------
@@ -593,3 +561,45 @@ def load_rates(start, end, weekly=False):
     except Exception as error:
         st.error(f"Could not fetch exchange rates from Norges Bank: {error}")
         return pd.DataFrame()
+
+
+# ---------------------------------------------------------------------------------------------
+# Cached results of the analyses (Oblig4). Each is computed once per set of inputs, so going back to a setting
+# that was already shown is instant. The inputs (series, tables, numbers) are what decides the cache.
+# Errors (e.g. too little data for the settings) are raised and NOT cached, so the page can show them
+# ---------------------------------------------------------------------------------------------
+
+# The forecast (ind320.forecast.forecast_filling) with the same arguments. info["seconds"] is the time of the
+# first run, also when the result comes from the cache
+@st.cache_data(ttl=3600, show_spinner="Training the model and forecasting...", max_entries=100)
+def run_forecast(filling, exog=None, **settings):
+    return forecast.forecast_filling(filling, exog=exog, **settings)
+
+
+# The sliding window correlation and the lag scan (ind320.correlation)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=100)
+def run_sliding_correlation(weather_series, reservoir_series, window, lag):
+    return correlation.sliding_correlation(weather_series, reservoir_series, window=window, lag=lag)
+
+
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=100)
+def run_lag_correlations(weather_series, reservoir_series, max_lag=12):
+    return correlation.lag_correlations(weather_series, reservoir_series, max_lag=max_lag)
+
+
+# The animated map on Reservoirs, with its table (one row per week, one column per area). Building the figure
+# (the shapes and hundreds of frames) is the slow part, so it is made once per type of area, period, step,
+# outlined areas and light/dark theme, not on every rerun. Returns (None, empty table) if there is no data
+@st.cache_data(ttl=3600, show_spinner="Preparing the map...", max_entries=20)
+def load_animation_figure(area_type, start, end, step, selected, dark, title):
+    shapes = load_animation_shapes(area_type)
+    period = load_reservoir_period(area_type, available_area_numbers(area_type), start, end)
+    table = period.pivot_table(index=period.index, columns="area_nr", values="filling_degree")
+    if table.empty:
+        return None, table
+
+    # Every step-th week, counted back from the last one, so the latest week is always a frame
+    frames = table.iloc[::-1].iloc[::step].iloc[::-1]
+    fig = maps.overview_animation(shapes, frames, selected=list(selected), label="Filling degree", dark=dark,
+                                  title=title)
+    return fig, table

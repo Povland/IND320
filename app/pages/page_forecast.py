@@ -1,7 +1,7 @@
 import streamlit as st
 
 from utils.controls import area_type_selector, single_area_selector
-from utils.data import available_area_numbers, available_dates, forecast, load_filling_series, load_weekly_weather
+from utils.data import run_forecast, available_area_numbers, available_dates, forecast, load_filling_series, load_weekly_weather
 
 st.title("Forecast")
 st.write(
@@ -135,12 +135,11 @@ level = right.select_slider("Interval", options=[0.8, 0.9, 0.95], value=0.9, key
 # (too short history, weather missing) give a readable message from forecast_filling instead of a crash
 # ---------------------------------------------------------------------------------------------
 try:
-    with st.spinner("Training the model and forecasting..."):
-        result, info = forecast.forecast_filling(
-            filling, exog=exog, train_end=train_end, history_weeks=history_years * 52, horizon=horizon,
-            exog_lag=exog_lag, p=int(p), d=int(d), q=int(q), m=52, sp=int(sp), sd=int(sd), sq=int(sq),
-            learning_rate=learning_rate, intervals=intervals, interval_alpha=round(1 - level, 2),
-        )
+    result, info = run_forecast(
+        filling, exog=exog, train_end=train_end, history_weeks=history_years * 52, horizon=horizon,
+        exog_lag=exog_lag, p=int(p), d=int(d), q=int(q), m=52, sp=int(sp), sd=int(sd), sq=int(sq),
+        learning_rate=learning_rate, intervals=intervals, interval_alpha=round(1 - level, 2),
+    )
 except ValueError as error:
     st.warning(str(error))
     st.stop()
@@ -167,7 +166,8 @@ if info["weeks_with_actual"]:
 else:
     columns[2].metric("Forecast error", "Not known yet",
                       help="The forecast weeks haven't happened yet. Choose an earlier last week of training to compare.")
-columns[3].metric("Run time", f"{info['seconds']:.2f} s")
+    columns[3].metric("Run time", f"{info['seconds']:.2f} s",
+                      help="The time it took to train and forecast. Settings already shown are read from the cache.")
 
 # The weather for weeks beyond the stored data is unknown, so the average for that week of the year is used
 if info["exog_source"].get("seasonal average"):

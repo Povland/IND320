@@ -65,7 +65,7 @@ to the ERA5 grid, each grid cell is downloaded once, and the area's weather is t
 weighted by how many locations fell in each.
 
 The data is downloaded inside the app (*Fetch latest data* on *Weather Outliers*, or several areas and years at once
-on *Home*), and stored in MongoDB as one document per area, year and number of locations, so the next visit is instant.
+on Data status), and stored in MongoDB as one document per area, year and number of locations, so the next visit is instant.
 """)
 
 
@@ -174,14 +174,14 @@ def reservoir_limitations():
 - *Filling degree* is a fraction (0.72 = 72 %), not a percentage.
 - The watercourse areas (VASS) are a hydrological division and don't match the price areas (EL).
 - NVE's API has no date parameters, so the app downloads everything and keeps it for one hour.
-  Use *Fetch latest data* at the bottom of the page, or *Refresh all cached data* on Home, to get new numbers sooner.
+  Use *Fetch latest data* at the bottom of the page, or *Refresh all cached data* Data status, to get new numbers sooner.
 """)
 
 
 def crossborder_limitations():
     st.markdown("""
 - The data goes two years back from when it was first fetched, and is extended with *Fetch latest data*.
-  The first year is therefore partial, and so is the current one. *Data status* on Home shows the exact period.
+  The first year is therefore partial, and so is the current one. *Data status* on Data status shows the exact period.
 - Fetching new data needs an ENTSO-E token in the app's secrets. Without it, the app shows what is stored.
 - Borders that report every 15 minutes are averaged to hourly values, so short spikes are smoothed out.
 - Hours without a reported value are left out, not set to zero.
