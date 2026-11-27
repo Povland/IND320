@@ -6,29 +6,10 @@ changes. The code also writes two local caches here (see the end),
 which are not in git.
 
 --------------------------------------------------------------------
-reservoirs.csv
---------------------------------------------------------------------
-What:     NVE Magasinstatistikk, weekly reservoir filling in Norway.
-Source:   Provided with the course for Oblig1. Same data as NVE's
-          Magasinstatistikk API:
-          https://biapi.nve.no/magasinstatistikk/swagger/index.html
-Period:   1995-01-08 to 2026-09-06, one row per area per week.
-Columns:  dato_Id, omrType, omrnr, iso_aar, iso_uke, fyllingsgrad,
-          kapasitet_TWh, fylling_TWh, neste_Publiseringsdato,
-          fyllingsgrad_forrige_uke, endring_fyllingsgrad
-Areas:    omrType = NO   -> all of Norway (omrnr 0)
-          omrType = EL   -> electricity price areas NO1-NO5 (omrnr 1-5)
-          omrType = VASS -> 3 water course areas (omrnr 1-3):
-                            1 = East (Austlandet, Agder, parts of Rogaland)
-                            2 = West (rest of Rogaland, most of Vestland)
-                            3 = North (Møre og Romsdal, Trøndelag, Nord-Norge)
-Used by:  Only Oblig1. The app and Oblig2 fetch the same data from the API.
-
---------------------------------------------------------------------
 Budområder.zip
 --------------------------------------------------------------------
 What:     Shapefile with the electricity price areas (bidding zones)
-          NO1-NO5. Matches omrType = EL in reservoirs.csv.
+          NO1-NO5. Matches omrType = EL in NVE's reservoir data.
 Source:   NVE Atlas, https://atlas.nve.no
           Layer: Nettanlegg > Nettområder > Budområder
 Download: 09.11.2026
@@ -56,6 +37,18 @@ What:     Land cover map of Norway, scale 1:5 000 000 (coarse coastline),
 Source:   NVE Atlas, https://atlas.nve.no (map data from Kartverket)
           Layer: Administrasjon > Administrative områder > Norge_N5000
 Download: 09.11.2026
+
+--------------------------------------------------------------------
+areas_EL.geojson, areas_VASS.geojson, areas_NO.geojson
+--------------------------------------------------------------------
+What:     The areas as GeoJSON (Oblig4), one file per type of area:
+          price areas NO1-NO5 (EL), watercourse areas 1-3 (VASS) and all
+          of Norway (NO, the price areas merged). Clipped to land, in
+          latitude and longitude (EPSG:4326), simplified to about 1 km.
+Made by:  ind320.areas.export_geojson(), from Budområder.zip,
+          NVE_Region.zip and Norge_N5000.zip. Run in Oblig4.ipynb.
+Used by:  The app's maps (Home, Map of Norway, Weather Outliers).
+          The animated map on Reservoirs simplifies them further.
 
 --------------------------------------------------------------------
 Local caches (written by the code, not in git)

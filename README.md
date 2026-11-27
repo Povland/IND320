@@ -84,7 +84,6 @@ It is shown at the bottom of the sidebar and on the About page.
 | `app/utils/crossborder.py` | Choosers, titles and figures for the Cross-border flow page |
 | `app/utils/about.py` | All text about the data and the project, shared by the About page and the info boxes, plus the app version |
 | `data/data_info` | Where each file in `data/` comes from and what it is used for |
-| `data/reservoirs.csv` | Legacy, only used by Oblig1. The app and Oblig2 use NVE's API |
 | `data/Budområder.zip`, `data/NVE_Region.zip`, `data/Norge_N5000.zip` | Shapefiles from NVE Atlas: price areas, NVE regions (merged into the VASS areas) and land cover of Norway |
 | `data/weather_cells/` | Downloaded weather per grid cell and time interval, a local cache so a stopped download can continue. **Not in git** |
 | `data/entsoe_flows.parquet` | Local backup of the ENTSO-E download in Oblig2. **Not in git** |
@@ -120,3 +119,11 @@ On Streamlit Community Cloud, the same content is pasted into the app's Settings
 
 - The app also writes to MongoDB (the weather downloads and the cross-border updates), so the user in the URI needs read and write access to the database.
 - Without `[entsoe]` the app still works, but the Cross-border flow page can only show what is already stored.
+
+## Removed files 
+Two files from earlier parts were removed in version 4 to clean up the repository:
+
+- `data/reservoirs.csv`: the reservoir data as a CSV file, used only by `notebooks/Oblig1.ipynb`. The app and the later notebooks get the same data straight from NVE's API. **Oblig1.ipynb no longer runs as it is**: its first data cell reads this file. The results of Oblig1 are still in the notebook's saved outputs.
+- `notebooks/screenshot_entsoe_unexpected_error.png`: a screenshot of an error from ENTSO-E, shown in the log of `notebooks/Oblig2.ipynb`. **The image no longer shows in Oblig2's log**, but the text describing the error is still there, and the exported `Oblig2.html` and `Oblig2.pdf` were made before it was removed.
+
+Both files are still in the git history (before the version 4 commits), if they are ever needed.

@@ -36,9 +36,14 @@ if not weeks:
                "Try again in a moment, or see Data status.")
     st.page_link("pages/page_data_status.py", label="See Data status")
     st.stop()
+# The whole history of the area, straight from NVE (cached). The training period is chosen below
+filling = load_filling_series(area_type, area_nr, weeks[0], weeks[-1])
+if filling.empty:
+    st.warning(f"No reservoir data for {label}.")
+    st.stop()
 
 # ---------------------------------------------------------------------------------------------
-# Training period and horizon. The last week of training is shared with the map on Home
+# Training period and horizon. The last week of training is shared with Map of Norway
 # (st.session_state["selected_week"]), so both show the same point in time
 # ---------------------------------------------------------------------------------------------
 st.subheader("Training period and horizon")
