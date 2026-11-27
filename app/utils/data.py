@@ -332,14 +332,7 @@ def load_weekly_weather(area_type, area_nr, points_per_area=DEFAULT_POINTS, show
         if show_error:
             st.error(f"Could not read the weather for {weather.region_id(area_type, area_nr)} from MongoDB: {error}")
         return pd.DataFrame()
-
-
-# The years that can be chosen on the weather pages, newest first. Only whole years: ERA5 arrives about 5 days late,
-# so a year counts as complete from about 6 January the year after
-def weather_years():
-    last_complete = (datetime.now(timezone.utc) - timedelta(days=6)).year - 1
-    return list(range(last_complete, WEATHER_FIRST_YEAR - 1, -1))
-
+    
 
 # How long a download of this many API calls takes, in minutes. Follows the pacing in openmeteo.fetch_cells:
 # by the minute limit if the job fits within one hour's limit, otherwise by the hour limit
