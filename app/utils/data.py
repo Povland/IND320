@@ -363,20 +363,19 @@ def _clear_weather_caches():
 # ---------------------------------------------------------------------------------------------
 
 
-# The shapes of all areas of one type, clipped to land and ready to draw (latitude and longitude, simplified).
-# "NO" (all of Norway) has no shape of its own, so it is the five price areas merged into one.
-# Cached, so the merging, converting and simplifying happen once per type of area, not on every rerun
-# (e.g. each move of the week slider). cache_data hands out a copy each time, so a page can't change the cached table
+# The shapes of all areas of one type, ready to draw (latitude and longitude, simplified), read from the GeoJSON
+# files in data/ (made by areas.export_geojson). Falls back to the shapefiles if a file is missing.
+# Cached, so the file is read once per type of area. cache_data hands out a copy each time,
+# so a page can't change the cached table
 @st.cache_data(show_spinner=False)
 def load_area_shapes(area_type):
-    land = areas.land_areas()
-    if area_type == "NO":
-        shapes = land[land["area_type"] == "EL"].dissolve().reset_index(drop=True)
-        shapes["area_type"], shapes["area_nr"] = "NO", 0
-        shapes = shapes[["area_type", "area_nr", "geometry"]]
-    else:
-        shapes = land[land["area_type"] == area_type].reset_index(drop=True)
-    return maps.prepare_for_map(shapes)
+    return areas.load_geojson(area_type)
+
+
+# The shape of one area, as a one-row table (the map on Weather Outliers)
+def load_area_shape(area_type, area_nr):
+    shapes = load_area_shapes(area_type)
+    return shapes[shapes["area_nr"] == area_nr]
 
 
 # Coarser outlines for the animated map on Reservoirs. In an animation every frame
