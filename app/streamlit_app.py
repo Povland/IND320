@@ -16,18 +16,20 @@ if "mongo_status" not in st.session_state:
     with st.spinner("Testing the database connection..."):
         run_connection_test()
 
-# The app's pages, grouped by type of task. Each key is a heading in the sidebar ("" gives no heading, so Home
-# is on top on its own). st.navigation replaces Streamlit's automatic page list (which used the file names),
+# The app's pages, grouped by type of task. Each key is a heading in the sidebar. "" gives no heading,
+# so Home and the map are on top on their own (the map feeds all the groups: a click selects the area for them).
+# st.navigation replaces Streamlit's automatic page list (which used the file names),
 # so the names, the groups and the order are decided here
 SECTIONS = {
     "": [
         st.Page("pages/page_home.py", title="Home", default=True),
+        st.Page("pages/page_map.py", title="Map of Norway", url_path="map"),
     ],
     "Explore": [
         st.Page("pages/page_reservoirs.py", title="Reservoirs", url_path="reservoirs"),
-        st.Page("pages/page_seasonal.py", title="Seasonality & Spectrum", url_path="seasonality-spectrum"),
         st.Page("pages/page_cross_border.py", title="Cross-border flow", url_path="cross-border-flow"),
         st.Page("pages/page_currency.py", title="Currency", url_path="currency"),
+        st.Page("pages/page_seasonal.py", title="Seasonality & Spectrum", url_path="seasonality-spectrum"),
     ],
     "Anomalies": [
         st.Page("pages/page_weather.py", title="Weather Outliers", url_path="weather-outliers"),
@@ -59,14 +61,20 @@ if group in GROUP_COLORS:
     )
 
 # Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file,
-# so it is the same widget on every page. The Forecast page has its own selectors, so it isn't here
+# so it is the same widget on every page. The map and the Forecast page have their own selectors
 GLOBAL_SELECTION_PAGES = {"reservoirs", "seasonality-spectrum", "weather-outliers", "weather-vs-reservoirs"}
 if navigation.url_path in GLOBAL_SELECTION_PAGES:
     global_selection()
 
-# Pinned to the bottom of the sidebar. The number is set in pyproject.toml (see utils/about.py)
+# Pinned to the bottom of the sidebar: the database connection (green or red dot, from the test on load or the
+# button on Data status) and the app version (set in pyproject.toml, see utils/about.py)
+connected = st.session_state["mongo_status"]["connected"]
+dot_color = "#2e9e6a" if connected else "#d64545"
+status_text = "Database connected" if connected else "Database not connected"
 st.sidebar.markdown(
-    f"<div style='position: fixed; bottom: 1rem; font-size: 0.8rem; opacity: 0.6;'>App version: {APP_VERSION}</div>",
+    f"<div style='position: fixed; bottom: 1rem; font-size: 0.8rem;'>"
+    f"<span style='color: {dot_color}; font-size: 1rem;'>●</span> {status_text}<br>"
+    f"<span style='opacity: 0.6;'>App version: {APP_VERSION}</span></div>",
     unsafe_allow_html=True,
 )
 

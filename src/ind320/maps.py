@@ -143,16 +143,17 @@ CONTROL_COLORS = {
     True: dict(text="#fafafa", background="#262730", active="#4a4f5c", border="#4a4f5c"),    # dark
 }
 
-
 # The overview map played over time: one frame per row of table (index: dates, columns: area numbers).
-# The map is sent to the browser once, and each frame only holds the new colours, so plotly plays it in the browser.
-# The speed buttons (Slow, Normal, Fast) are part of the map, not Streamlit widgets, and all continue from the
-# current week, so changing speed doesn't start the animation over.
-# The colour scale must be fixed (zmin, zmax), otherwise the same colour would mean different values in each frame
+# The map is sent to the browser once, and each frame only holds the new colours, so dragging the slider and playing
+# both happen in the browser, without Streamlit redrawing the page (no "snap").
+# It opens on the last week. Slow, Normal and Fast play from where the slider is, so changing speed doesn't start
+# over, and From start plays the whole period. The colour scale must be fixed (zmin, zmax), otherwise the same
+# colour would mean different values in each frame
 def overview_animation(areas, table, selected=(), title=None, label="Value", value_format=".0%",
                        zmin=0, zmax=1, speeds=PLAY_SPEEDS, height=600, dark=False):
     weeks = table.index
-    fig = overview_map(areas, table.iloc[0], selected, title, label, value_format, zmin, zmax, height)
+    last = len(weeks) - 1
+    fig = overview_map(areas, table.iloc[last], selected, title, label, value_format, zmin, zmax, height)
 
     # The order of the areas in the map, so each frame's values match the right area
     order = areas["area_nr"].tolist()
@@ -169,9 +170,10 @@ def overview_animation(areas, table, selected=(), title=None, label="Value", val
         for name, (_, row) in zip(names, table.iterrows())
     ]
 
-    # Every play button continues from the current frame (fromcurrent), so switching speed keeps the place
-    def play(frame_ms):
-        return dict(frame=dict(duration=frame_ms, redraw=True), fromcurrent=True, transition=dict(duration=0))
+    # The speed buttons continue from the current frame (fromcurrent), so switching speed keeps the place.
+    # From start plays from the first frame at normal speed
+    def play(frame_ms, from_start=False):
+        return dict(frame=dict(duration=frame_ms, redraw=True), fromcurrent=not from_start, transition=dict(duration=0))
 
     pause = dict(frame=dict(duration=0, redraw=False), mode="immediate", transition=dict(duration=0))
     jump = dict(frame=dict(duration=0, redraw=True), mode="immediate", transition=dict(duration=0))
@@ -186,10 +188,11 @@ def overview_animation(areas, table, selected=(), title=None, label="Value", val
             bgcolor=colors["background"], bordercolor=colors["border"], borderwidth=1,
             font=dict(color=colors["text"]), active=-1,
             buttons=[dict(label="Pause", method="animate", args=[[None], pause])]
-                    + [dict(label=name, method="animate", args=[None, play(ms)]) for name, ms in speeds.items()],
+                    + [dict(label=name, method="animate", args=[None, play(ms)]) for name, ms in speeds.items()]
+                    + [dict(label="From start", method="animate", args=[None, play(speeds["Normal"], from_start=True)])],
         )],
         sliders=[dict(
-            active=0, x=0.32, len=0.68, y=-0.02, yanchor="top",
+            active=last, x=0.42, len=0.58, y=-0.02, yanchor="top",
             bgcolor=colors["background"], bordercolor=colors["border"], activebgcolor=colors["active"],
             # The week counter above the slider has its own text colour. The slider's tick labels are hidden
             # (one step per week is too many to label), and without its own colour the counter would be hidden too
@@ -200,7 +203,6 @@ def overview_animation(areas, table, selected=(), title=None, label="Value", val
         )],
     )
     return fig
-
 
 # The main map (Home): all areas of one type on a map background, coloured transparently by values (a dict or Series
 # from area_nr to a value), with the selected area (an area_nr, or None) outlined thick in orange.
@@ -246,4 +248,61 @@ def selection_map(areas, values, selected=None, title=None, label="Value", value
         map=dict(style="carto-darkmatter" if dark else MAP_STYLE, center=center, zoom=zoom),
         margin=dict(l=0, r=0, t=40 if title else 0, b=0),
     )
+    return fig
+
+# ---------------------------------------------------------------------------------------------
+# Cross-border flow as arrows on the main map (Oblig4)
+# ---------------------------------------------------------------------------------------------
+
+# Approximate positions of the connections: (latitude, longitude) of a point on the Norwegian side and a point
+# towards the other country. Placed by hand near the cables and lines, short enough to stay on the map of Norway,
+# so the subsea cables to Germany, the Netherlands and Britain point out to sea
+FLOW_POSITIONS = {
+    "NO_1-SE_3": ((59.65, 11.35), (59.55, 12.85)),     # Halden/Hasle - Sweden
+    "NO_2-DE_LU": ((58.25, 7.00), (56.80, 7.60)),      # NordLink (Tonstad) - Germany
+    "NO_2-DK_1": ((58.10, 8.00), (57.10, 8.90)),       # Skagerrak (Kristiansand) - Denmark
+    "NO_2-NL": ((58.25, 6.60), (56.90, 5.60)),         # NorNed (Feda) - the Netherlands
+    "NO_2-GB": ((59.00, 5.40), (58.00, 3.60)),         # North Sea Link (Kvilldal) - Britain
+    "NO_3-SE_2": ((63.40, 11.90), (63.30, 13.40)),     # Trøndelag - Sweden
+    "NO_4-SE_2": ((66.00, 14.30), (65.90, 15.40)),     # Helgeland - Sweden
+    "NO_4-SE_1": ((68.30, 17.90), (67.90, 18.90)),     # Ofoten - Sweden
+    "NO_4-FI": ((69.40, 26.50), (68.90, 27.00)),       # Finnmark - Finland
+}
+FOREIGN_NAMES = {"SE_1": "SE1", "SE_2": "SE2", "SE_3": "SE3", "DE_LU": "DE", "DK_1": "DK1", "NL": "NL",
+                 "GB": "GB", "FI": "FI"}
+EXPORT_COLOR = CELL_COLOR      # orange: more out of Norway than in
+IMPORT_COLOR = "#8b5cf6"       # purple: more into Norway than out (stands out on the blue filling degree)
+
+
+# Adds one arrow per connection to a map from selection_map, from flows (load_weekly_flows: connection, out_gwh,
+# in_gwh, net_gwh). The line goes from where the power comes from to where it goes, with a dot at the end:
+# orange for net export, purple for net import. The thickness grows with the net flow, and the label at the dot
+# shows the country and the net GWh. Hover shows out, in and net
+def add_flow_arrows(fig, flows, dark=False):
+    if flows.empty:
+        return fig
+    largest = flows["net_gwh"].abs().max() or 1
+    text_color = "#fafafa" if dark else "#31333f"
+
+    for _, row in flows.iterrows():
+        if row["connection"] not in FLOW_POSITIONS:
+            continue
+        norway, abroad = FLOW_POSITIONS[row["connection"]]
+        exporting = row["net_gwh"] >= 0
+        start, end = (norway, abroad) if exporting else (abroad, norway)
+        color = EXPORT_COLOR if exporting else IMPORT_COLOR
+        width = 2 + 8 * abs(row["net_gwh"]) / largest
+        foreign = FOREIGN_NAMES.get(row["connection"].split("-")[1], row["connection"])
+        hover = (f"{row['connection'].replace('_', '')}<br>Out of Norway: {row['out_gwh']:,.0f} GWh<br>"
+                 f"Into Norway: {row['in_gwh']:,.0f} GWh<br>Net: {row['net_gwh']:+,.0f} GWh<extra></extra>")
+
+        fig.add_trace(go.Scattermap(
+            lat=[start[0], end[0]], lon=[start[1], end[1]], mode="lines",
+            line=dict(width=width, color=color), hovertemplate=hover, showlegend=False,
+        ))
+        fig.add_trace(go.Scattermap(
+            lat=[end[0]], lon=[end[1]], mode="markers+text", marker=dict(size=width + 8, color=color),
+            text=[f"{foreign} {abs(row['net_gwh']):,.0f} GWh"], textposition="middle right",
+            textfont=dict(color=text_color, size=12), hovertemplate=hover, showlegend=False,
+        ))
     return fig

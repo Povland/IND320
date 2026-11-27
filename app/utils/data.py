@@ -17,18 +17,24 @@ SRC_PATH = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from ind320 import anomalies, forecast, areas, entsoe, maps, nve, openmeteo, seasonal, weather
+from ind320 import norgesbank, anomalies, forecast, areas, entsoe, maps, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows: written by notebooks/Oblig2.ipynb, and kept up to date by the
 # app (ind320.entsoe). The name comes from the package, so it is only written in one place
 FLOWS_COLLECTION = entsoe.FLOWS_COLLECTION
+
+# When the app last actually downloaded from NVE and Norges Bank (not read from its cache), for Data status.
+# Kept in the server's memory: shared by all visitors, and empty again after the app restarts
+LAST_DOWNLOAD = {}
 
 
 # Caches the result for one hour, since the data only changes weekly.
 # Errors are raised from here instead of returned, so a failed download is NOT cached
 @st.cache_data(ttl=3600, show_spinner="Downloading reservoir data from NVE...")
 def _fetch_reservoir_data():
-    return nve.fetch_reservoir_data()
+    data = nve.fetch_reservoir_data()
+    LAST_DOWNLOAD["nve"] = pd.Timestamp.now(tz="Europe/Oslo")
+    return data
 
 
 # All reservoir statistics from NVE's API (all areas, all weeks).
@@ -200,6 +206,33 @@ def load_hourly_flows(connections, years, months):
     hourly["time"] = pd.to_datetime(hourly["time"], utc=True).dt.tz_convert("Europe/Oslo")
     return hourly.sort_values(["connection", "direction", "time"])
 
+# The cross-border flow in one week, per connection: out of Norway, into Norway and net (out minus in), in GWh,
+# and how many hours were found. The week is Monday 00:00 to Sunday 23:59 Norwegian time, ending on week_end
+# (a Sunday, like NVE's date_id). Only the one or two months the week touches are read from MongoDB.
+# Empty table if nothing is stored for the week
+def load_weekly_flows(week_end):
+    columns = ["connection", "out_gwh", "in_gwh", "net_gwh", "hours"]
+    end = pd.Timestamp(week_end).tz_localize("Europe/Oslo") + pd.Timedelta(days=1)
+    start = end - pd.Timedelta(days=7)
+    last_hour = end - pd.Timedelta(hours=1)
+
+    connections = tuple(load_connections())
+    years = tuple(sorted({start.year, last_hour.year}))
+    months = tuple(sorted({start.month, last_hour.month}))
+    hourly = load_hourly_flows(connections, years, months)
+    if hourly.empty:
+        return pd.DataFrame(columns=columns)
+
+    week = hourly[(hourly["time"] >= start) & (hourly["time"] < end)]
+    if week.empty:
+        return pd.DataFrame(columns=columns)
+
+    totals = week.pivot_table(index="connection", columns="direction", values="mwh", aggfunc="sum", fill_value=0)
+    totals = totals.reindex(columns=["out", "in"], fill_value=0) / 1000
+    result = pd.DataFrame({"out_gwh": totals["out"], "in_gwh": totals["in"]})
+    result["net_gwh"] = result["out_gwh"] - result["in_gwh"]
+    result["hours"] = week.groupby("connection")["time"].nunique()
+    return result.reset_index()[columns]
 
 # Filling degree as a regular weekly series, for STL and the spectrogram (ind320.seasonal).
 # Built from the reservoir data above, so it follows the same period slider.
@@ -329,10 +362,12 @@ def load_area_shapes(area_type):
     return maps.prepare_for_map(shapes)
 
 
-# The shape of one area, as a one-row table
-def load_area_shape(area_type, area_nr):
-    shapes = load_area_shapes(area_type)
-    return shapes[shapes["area_nr"] == area_nr]
+# Coarser outlines for the animated map on Reservoirs. In an animation every frame
+# redraws every outline, so far fewer points make it play and drag much more smoothly. On a map of all of Norway
+# the difference can't be seen. Cached per type of area
+@st.cache_data(show_spinner=False)
+def load_animation_shapes(area_type):
+    return areas.map_shapes(area_type, tolerance=0.05)
 
 
 # One area's grid cells (latitude, longitude, n_points) for a given number of random locations
@@ -384,6 +419,21 @@ def check_reservoirs():
 def refresh_reservoirs():
     _fetch_reservoir_data.clear()
 
+# Clears only the currency cache, so the Currency page fetches from Norges Bank again
+def refresh_rates():
+    _fetch_rates.clear()
+
+
+# Currency: asks Norges Bank directly (not the cache) for the last two weeks, and gives the latest business day
+# with a rate. This is the ping: it shows whether the API answers and how new its data is.
+# Errors are raised, so the page can show them
+def check_currency():
+    today = pd.Timestamp.now(tz="Europe/Oslo").tz_localize(None).normalize()
+    rates = norgesbank.fetch_rates(today - pd.Timedelta(days=14), today)
+    LAST_DOWNLOAD["norgesbank"] = pd.Timestamp.now(tz="Europe/Oslo")
+    rates = rates.dropna(how="all")
+    return {"available": not rates.empty, "latest_day": rates.index.max() if not rates.empty else None}
+
 
 # Cross-border flow: the period stored in MongoDB, the last hour stored, and whether that is more than a couple of
 # hours behind (ENTSO-E publishes with about an hour's delay). Also whether the app has an ENTSO-E token to update with
@@ -399,6 +449,7 @@ def check_crossborder():
         "behind": (now - last_hour) if last_hour is not None else None,
         "newer_expected": last_hour is None or now - last_hour > pd.Timedelta(hours=3),
         "has_token": "entsoe" in st.secrets and "token" in st.secrets["entsoe"],
+        "stored_at": entsoe.last_download(collection),
     }
 
 
@@ -520,3 +571,25 @@ def selection_map(areas, values, selected=None, title=None, label="Value", value
         margin=dict(l=0, r=0, t=40 if title else 0, b=0),
     )
     return fig
+
+
+# ---------------------------------------------------------------------------------------------
+# Exchange rates from Norges Bank (ind320.norgesbank). Fetched straight from the API, no token needed
+# ---------------------------------------------------------------------------------------------
+
+# EUR and USD in NOK, daily (business days) or weekly (weeks ending Sunday, like NVE's). Cached for an hour.
+# Errors are raised from here, so a failed fetch is NOT cached
+@st.cache_data(ttl=3600, show_spinner="Fetching exchange rates from Norges Bank...")
+def _fetch_rates(start, end, weekly):
+    rates = norgesbank.weekly_rates(start, end) if weekly else norgesbank.fetch_rates(start, end)
+    LAST_DOWNLOAD["norgesbank"] = pd.Timestamp.now(tz="Europe/Oslo")
+    return rates
+
+
+# The same, with a readable message instead of a crash if Norges Bank doesn't answer. Empty table then
+def load_rates(start, end, weekly=False):
+    try:
+        return _fetch_rates(start, end, weekly)
+    except Exception as error:
+        st.error(f"Could not fetch exchange rates from Norges Bank: {error}")
+        return pd.DataFrame()

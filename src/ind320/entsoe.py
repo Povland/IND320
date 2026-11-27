@@ -112,6 +112,7 @@ def monthly_documents(flows):
             "year": int(year),
             "month": int(month),
             "direction": direction,
+            "stored_at": pd.Timestamp.now(tz="UTC").to_pydatetime(),
             "total_mwh": float(group["mwh"].sum()),
             "time": [time.to_pydatetime() for time in group["time"]],
             "mwh": group["mwh"].astype(float).tolist(),
@@ -143,6 +144,14 @@ def last_stored_hour(collection):
     )
     hours = [pd.Timestamp(document["time"][-1], tz="UTC") for document in documents if document.get("time")]
     return max(hours) if hours else None
+
+
+# When the newest document was stored (UTC), or None if no document has a stored_at
+# (the documents from the Oblig2 notebook were stored before stored_at was added)
+def last_download(collection):
+    document = collection.find_one({"stored_at": {"$exists": True}}, {"_id": 0, "stored_at": 1},
+                                   sort=[("stored_at", -1)])
+    return None if document is None else pd.Timestamp(document["stored_at"], tz="UTC")
 
 
 # Brings the collection up to date: fetches from the start of the newest stored month (which is usually only
