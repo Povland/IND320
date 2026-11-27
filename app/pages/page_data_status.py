@@ -134,6 +134,9 @@ def fetch_all_sources():
 def open_download_box():
     st.session_state["home_open_download"] = True
 
+# Opens the cross-border download box below
+def open_flow_box():
+    st.session_state["data_status_open_flow"] = True
 
 check_column, fetch_column, refresh_column = st.columns([1, 1.3, 3], vertical_alignment="center")
 with check_column:
@@ -235,6 +238,8 @@ with entsoe_column, st.container(border=True, height="stretch"):
         st.markdown(f"Last downloaded: **{as_time(result.get('stored_at'), 'Before this was recorded')}**")
         if not result["has_token"]:
             st.caption("The app has no ENTSO-E token, so it can't fetch new data.")
+            st.button("Download cross-border flow", key="data_status_open_flow_button", on_click=open_flow_box,
+              help="Opens the cross-border download box below", disabled=not connected)
 
 # Norges Bank: an API, asked directly by the check. A new rate every business day at about 16:00
 with bank_column, st.container(border=True, height="stretch"):
@@ -256,9 +261,7 @@ with bank_column, st.container(border=True, height="stretch"):
         st.rerun()
 
 # The cross-border download has a progress bar, so it uses the same panel as the Cross-border flow page
-with st.expander("Fetch cross-border flow (ENTSO-E)"):
-    crossborder_panel("data_status")
-
+with st.expander("Fetch cross-border flow (ENTSO-E)", expanded=st.session_state.get("data_status_open_flow", False)):
 
 # ---------------------------------------------------------------------------------------------
 # 3. Download weather data, in a box that opens with the weather card's button.

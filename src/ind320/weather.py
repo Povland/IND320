@@ -141,10 +141,23 @@ def load_region_weather(db, region, year, points_per_area=areas.POINTS_PER_AREA)
     variables = [variable for variable in openmeteo.HOURLY_VARIABLES if variable in document]
     return pd.DataFrame({variable: document[variable] for variable in variables}, index=index)
 
+# ERA5 reaches Open-Meteo about 5 days late, so the newest full day is about 6 days ago
+ERA5_DELAY_DAYS = 6
+# A stored current year counts as up to date if it is at most this many days behind the newest ERA5 data
+CURRENT_YEAR_TOLERANCE_DAYS = 7
 
-# What is stored: one row per region, year and number of locations, with the first and last hour
-# Why a stored document is not complete, or "" if it is: it must have every current variable,
-# come from the current API settings, and cover the whole year up to 31 December 23:00
+
+# The last hour (UTC) there can be data for in a year: 31 December 23:00 for a past year, and the end of the newest
+# ERA5 day for the current year. Used both for what to download and for whether a stored year is complete
+def year_end(year, now=None):
+    now = pd.Timestamp.now(tz="UTC").tz_localize(None) if now is None else pd.Timestamp(now)
+    full_year = pd.Timestamp(f"{int(year)}-12-31 23:00")
+    newest = (now - pd.Timedelta(days=ERA5_DELAY_DAYS)).normalize() + pd.Timedelta(hours=23)
+    return min(full_year, newest)
+
+# Why a stored document is not complete, or "" if it is: it must have every current variable, come from the current
+# API settings, and reach the end of the year (year_end). For the current year, which grows every day, it counts as
+# complete while it is at most CURRENT_YEAR_TOLERANCE_DAYS behind the newest ERA5 data
 def incomplete_reason(variables, settings, year, last_hour):
     reasons = []
     if settings != openmeteo.settings_code():
@@ -153,10 +166,13 @@ def incomplete_reason(variables, settings, year, last_hour):
     lacking = [variable for variable in openmeteo.HOURLY_VARIABLES if variable not in stored_variables]
     if lacking:
         reasons.append("missing " + ", ".join(lacking))
-    if pd.isna(last_hour) or pd.Timestamp(last_hour) < pd.Timestamp(f"{int(year)}-12-31 23:00"):
-        reasons.append("incomplete year")
-    return "; ".join(reasons)
 
+    end = year_end(year)
+    current_year = end < pd.Timestamp(f"{int(year)}-12-31 23:00")
+    allowed = pd.Timedelta(days=CURRENT_YEAR_TOLERANCE_DAYS) if current_year else pd.Timedelta(0)
+    if pd.isna(last_hour) or pd.Timestamp(last_hour) < end - allowed:
+        reasons.append("not up to date" if current_year else "incomplete year")
+    return "; ".join(reasons)
 
 # What is stored: one row per region, year and number of locations, with the variables, the API settings,
 # the first and last hour, and whether it is complete (see incomplete_reason)

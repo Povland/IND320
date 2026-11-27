@@ -283,13 +283,12 @@ def fresh_stored_weather():
     return load_stored_weather()
 
 
-# The years with complete weather data for one area and number of locations, newest first.
-# A stored year that lacks a variable, comes from other API settings or stops before 31 December doesn't count
-def available_weather_years(area_type, area_nr, points_per_area=DEFAULT_POINTS):
-    stored = load_stored_weather()
-    match = ((stored["area_type"] == area_type) & (stored["area_nr"] == area_nr)
-             & (stored["points_per_area"] == points_per_area) & (stored["complete"] == True))
-    return sorted(stored.loc[match, "year"].astype(int).tolist(), reverse=True)
+# The years that can be chosen on the weather pages, newest first: every year from WEATHER_FIRST_YEAR, including the
+# current one, which runs up to the newest ERA5 data (about 6 days ago, see weather.year_end). In the first days of
+# January there is no data for the new year yet, so it starts with the year before
+def weather_years():
+    newest = (datetime.now(timezone.utc) - timedelta(days=weather.ERA5_DELAY_DAYS)).year
+    return list(range(newest, WEATHER_FIRST_YEAR - 1, -1))
 
 
 # One area's hourly weather for one year and number of locations. None if it isn't stored.
@@ -498,7 +497,7 @@ def check_weather(regions, years, points_per_area=DEFAULT_POINTS):
     for year, group in missing.groupby("year"):
         unique = weather.unique_cells(group["region"].tolist(), points_per_area)
         cells += len(unique)
-        calls += openmeteo.call_weight(len(unique), f"{year}-01-01", f"{year}-12-31")
+        calls += openmeteo.call_weight(len(unique), f"{year}-01-01", f"{weather.year_end(year):%Y-%m-%d}")
 
     cost = {
         "cells": cells,
@@ -531,7 +530,8 @@ def download_missing_weather(missing, points_per_area=DEFAULT_POINTS, progress=N
                 progress((number - 1) / len(years), f"{year}: checking which cells are already downloaded...")
 
             averages = weather.download_regions_weather(
-                regions, f"{year}-01-01", f"{year}-12-31", points_per_area=points_per_area, progress=year_progress,
+                                regions, f"{year}-01-01", f"{weather.year_end(year):%Y-%m-%d}", points_per_area=points_per_area,
+                progress=year_progress,
             )
             for region, average in averages.items():
                 weather.save_region_weather(db, region, average, points_per_area)

@@ -242,7 +242,9 @@ def weather_limitations():
 - The notebook uses 100 random locations per area. The task asks for 1000, which can be chosen on *Weather Outliers*,
   but downloading every area with 1000 locations takes more than one day of the free API.
 - `snow_depth` is empty for the ERA5 model, so it is not downloaded. Snow is described by the snowfall only.
-- Only whole years can be chosen, since the outlier boundaries are estimated from the whole year.
+- The current year runs up to the newest ERA5 data, about 6 days ago, and counts as up to date for 7 days.
+  After that, *Download missing* fetches it again from January. The outlier boundaries for the current year are
+  estimated from the part of the year that has passed.
 - Only 100 locations per area are stored for 2024 and 2025, to stay within the free API's limit. So the weather on the
   map, in the forecast and in the correlation only covers those two years.
 - Precipitation is skewed and can't be negative, so SPC gives many outliers above and almost none below for it.
