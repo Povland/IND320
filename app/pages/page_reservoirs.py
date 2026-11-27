@@ -23,7 +23,7 @@ if load_reservoir_data().empty:
     st.warning("The reservoir data could not be fetched from NVE right now.")
     if st.button("Try again", on_click=refresh_data):
         st.rerun()
-    st.page_link("pages/page_home.py", label="See the data status on Home")
+        st.page_link("pages/page_data_status.py", label="See Data status")
     st.stop()
 
 # The global selection from the sidebar (drawn by streamlit_app.py, shared with the other pages)

@@ -200,3 +200,50 @@ def overview_animation(areas, table, selected=(), title=None, label="Value", val
         )],
     )
     return fig
+
+
+# The main map (Home): all areas of one type on a map background, coloured transparently by values (a dict or Series
+# from area_nr to a value), with the selected area (an area_nr, or None) outlined thick in orange.
+# Three layers, so every area can be clicked, even one without a value:
+#   1. the outlines of all areas, with a transparent fill (gets the click where there is no value)
+#   2. the values, partly transparent so the map shows through
+#   3. the selected area's outline, which ignores the mouse ("skip"), so a click goes to the layer below
+def selection_map(areas, values, selected=None, title=None, label="Value", value_format=".0%", colorscale="Blues",
+                  zmin=None, zmax=None, height=600, dark=False):
+    geojson, ids = to_geojson(areas)
+    center, zoom = _view(areas, height)
+    transparent = [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]]
+
+    fig = go.Figure()
+    fig.add_trace(go.Choroplethmap(
+        geojson=geojson, locations=ids, featureidkey="properties.area_id", z=[0] * len(ids),
+        colorscale=transparent, showscale=False, marker_line_width=1, marker_line_color="#8a8f98",
+        hovertemplate="%{location}: no value<extra></extra>", name="Areas",
+    ))
+
+    shown = areas.assign(value=areas["area_nr"].map(values)).dropna(subset=["value"])
+    if not shown.empty:
+        value_geojson, value_ids = to_geojson(shown)
+        fig.add_trace(go.Choroplethmap(
+            geojson=value_geojson, locations=value_ids, featureidkey="properties.area_id", z=shown["value"],
+            zmin=zmin, zmax=zmax, colorscale=colorscale, marker_opacity=0.6,
+            marker_line_width=1, marker_line_color="white",
+            colorbar=dict(title=label, tickformat=value_format),
+            hovertemplate=f"%{{location}}: %{{z:{value_format}}}<extra></extra>", name=label,
+        ))
+
+    chosen = areas[areas["area_nr"] == selected] if selected is not None else areas.iloc[0:0]
+    if not chosen.empty:
+        chosen_geojson, chosen_ids = to_geojson(chosen)
+        fig.add_trace(go.Choroplethmap(
+            geojson=chosen_geojson, locations=chosen_ids, featureidkey="properties.area_id", z=[0],
+            colorscale=transparent, showscale=False, marker_line_width=4, marker_line_color=CELL_COLOR,
+            hoverinfo="skip", name="Selected",
+        ))
+
+    fig.update_layout(
+        title=title, height=height, showlegend=False, clickmode="event+select",
+        map=dict(style="carto-darkmatter" if dark else MAP_STYLE, center=center, zoom=zoom),
+        margin=dict(l=0, r=0, t=40 if title else 0, b=0),
+    )
+    return fig
