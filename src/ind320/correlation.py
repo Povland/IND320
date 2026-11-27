@@ -4,7 +4,6 @@
 #   - correlation_figure: the two series and the sliding correlation, in three panels with a shared time axis
 
 import pandas as pd
-import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from ind320.maps import AREA_COLOR, CELL_COLOR

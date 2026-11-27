@@ -158,7 +158,7 @@ def single_area_selector(key, area_type, area_numbers):
 
     remembered = memory.get(widget_key)
     if remembered not in area_numbers:
-        # An area selected on the map (Home) comes first, then the first area ticked in the sidebar
+        # An area selected on Map of Norway comes first, then the first area ticked in the sidebar
         selected = st.session_state.get("selected_area")
         if selected and selected[0] == area_type and selected[1] in area_numbers:
             remembered = selected[1]
@@ -204,7 +204,7 @@ def year_selector(key, years, format_func=str):
 
 
 # ---------------------------------------------------------------------------------------------
-# The selected area, from a click on the map (Home) or the dropdown next to it. Stored in st.session_state,
+# The selected area, from a click on Map of Norway or the dropdown next to it. Stored in st.session_state,
 # so the other pages start from it: the type of area everywhere, the area ticked in the sidebar,
 # and the single-area choice on the analysis pages
 # ---------------------------------------------------------------------------------------------

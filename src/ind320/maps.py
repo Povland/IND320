@@ -204,7 +204,7 @@ def overview_animation(areas, table, selected=(), title=None, label="Value", val
     )
     return fig
 
-# The main map (Home): all areas of one type on a map background, coloured transparently by values (a dict or Series
+# The main map (Map of Norway, and the small one on Home): all areas of one type on a map background, coloured transparently by values (a dict or Series
 # from area_nr to a value), with the selected area (an area_nr, or None) outlined thick in orange.
 # Three layers, so every area can be clicked, even one without a value:
 #   1. the outlines of all areas, with a transparent fill (gets the click where there is no value)

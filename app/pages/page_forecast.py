@@ -63,7 +63,7 @@ train_end = st.select_slider(
     "Last week of training", options=weeks, key="forecast_train_end", on_change=share_week,
     format_func=lambda date: f"{date:%d.%m.%Y}",
     help="The forecast starts the week after. Choose an earlier week to compare the forecast with what really "
-         "happened (a backtest). Shared with the map on Home.",
+         "happened (a backtest). Shared with Map of Norway.",
 )
 left, right = st.columns(2)
 history_years = left.slider(

@@ -1,5 +1,5 @@
 # The "Fetch latest data" panels: a check that is free and instant, and if something is missing, a second
-# button that downloads it with a progress bar. One panel per data source, used on the pages and on Home.
+# button that downloads it with a progress bar. One panel per data source, used on the pages and on Data status.
 #
 # A button is only True in the run right after it is clicked, so the result of a check is kept in
 # st.session_state until the download button is clicked. The check also remembers what was checked, and is

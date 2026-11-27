@@ -34,7 +34,7 @@ st.caption(
 
 # The weather data is stored in MongoDB, so nothing can be shown without the connection
 if not st.session_state["mongo_status"]["connected"]:
-    st.warning("Not connected to MongoDB, so the weather data can't be read. See *Database connection* on Home.")
+    st.warning("Not connected to MongoDB, so the weather data can't be read. See *Database connection* on Data status.")
     st.stop()
 
 # ---------------------------------------------------------------------------------------------

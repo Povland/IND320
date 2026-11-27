@@ -114,7 +114,7 @@ def check_mongo_connection():
 
 
 # Runs the check above and stores the result in the session, so every page can read it without asking MongoDB again.
-# Called once when the page is loaded (streamlit_app.py, manual=False) and when the "Test connection" button on Home is clicked (manual=True)
+# Called once when the page is loaded (streamlit_app.py, manual=False) and when the "Test connection" button on Data status is clicked (manual=True)
 def run_connection_test(manual=False):
     connected, details = check_mongo_connection()
     st.session_state["mongo_status"] = {
@@ -250,7 +250,7 @@ def load_filling_series(area_type, area_nr, start, end):
 
 # Weather (ERA5 via Open-Meteo), averaged per area and stored in MongoDB (see ind320.weather).
 # One document per area, year and number of random locations. Downloaded on Weather Outliers
-# (one area) or Home (all missing areas), or from notebooks/Oblig3.ipynb.
+# (one area) or Data status (all missing areas), or from notebooks/Oblig3.ipynb.
 
 # The numbers of random locations per area that can be chosen, and the default
 POINT_OPTIONS = areas.POINT_OPTIONS
@@ -276,7 +276,7 @@ def load_stored_weather():
                                      "settings", "first_hour", "last_hour", "stored_at", "reason", "complete"])
 
 
-# The stored weather straight from MongoDB, not from the cache, for the checks on Home.
+# The stored weather straight from MongoDB, not from the cache, for the checks on Data status.
 # The cache is cleared first, so the rest of the app sees the same fresh table afterwards
 def fresh_stored_weather():
     _fetch_stored_weather.clear()

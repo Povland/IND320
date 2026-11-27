@@ -65,6 +65,7 @@ It is shown at the bottom of the sidebar and on the About page.
 | `notebooks/Oblig2.html`, `notebooks/Oblig2.pdf` | Oblig2 exported as HTML and PDF |
 | `notebooks/Oblig3.ipynb` | Part 3: areas and random locations, weather from Open-Meteo, SPC, LOF, STL, spectrogram and maps |
 | `notebooks/Oblig3.html` | Oblig3 exported as HTML |
+| `notebooks/Oblig4.ipynb` | Part 4: Norges Bank's currency API, time zones, GeoJSON, the SARIMAX forecast with River and its tests, the app's structure |
 | `notebooks/screenshot_entsoe_unexpected_error.png` | Screenshot of an ENTSO-E error, shown in the Oblig2 log |
 | `src/ind320/` | All the logic, used by both the notebooks and the app. Installed as a package with `uv sync` |
 | `src/ind320/nve.py` | NVE's Magasinstatistikk API |
@@ -74,17 +75,20 @@ It is shown at the bottom of the sidebar and on the About page.
 | `src/ind320/weather.py` | Weather per area: the download function (region + interval), the weighted average, the MongoDB store, and what is missing |
 | `src/ind320/anomalies.py` | Outliers with SPC (DCT high-pass filter) and anomalies with LOF |
 | `src/ind320/seasonal.py` | STL decomposition and spectrogram of the filling degree |
-| `src/ind320/maps.py` | Plotly maps: one area with its grid cells, and all areas of one type coloured by a value, also played week by week |
+| `src/ind320/maps.py` | Plotly maps: one area with its grid cells, all areas of one type coloured by a value (also played week by week), the clickable main map and the cross-border flow arrows |
+| `src/ind320/forecast.py` | The forecast of the filling degree with SNARIMAX (SARIMAX) from River, with exogenous variables and intervals, and its animated figure |
+| `src/ind320/correlation.py` | Sliding window correlation between a weather property and the reservoirs, with a lag |
+| `src/ind320/norgesbank.py` | Norges Bank's currency API: EUR and USD in NOK, daily and weekly |
 | `src/ind320/config.py` | Reads the secret files in `No_sync/` |
-| `app/streamlit_app.py` | Entry point of the app: the page list, the connection test on load, the global selection in the sidebar and the version |
-| `app/pages/` | One file per page: Home, Reservoirs, Seasonality & Spectrum, Weather Outliers, Cross-border flow and About |
+| `app/streamlit_app.py` | Entry point of the app: the pages grouped by type of task, the connection test on load, the global selection in the sidebar, the database status and the version, and the safety net that catches errors on a page |
+| `app/pages/` | One file per page: Home, Map of Norway, Reservoirs, Cross-border flow, Currency, Seasonality & Spectrum, Weather Outliers, Weather vs reservoirs, Forecast, Data status and About |
 | `app/utils/data.py` | The app's access point to data: NVE's API, MongoDB, the weather and cross-border downloads, the update checks and the map shapes, with caching |
 | `app/utils/updates.py` | The "Fetch latest data" panels at the bottom of the pages: a free check, then a download of what is missing with a progress bar |
 | `app/utils/controls.py` | The global selection in the sidebar (area type, areas, period) and the local selectors on the pages |
 | `app/utils/crossborder.py` | Choosers, titles and figures for the Cross-border flow page |
 | `app/utils/about.py` | All text about the data and the project, shared by the About page and the info boxes, plus the app version |
 | `data/data_info` | Where each file in `data/` comes from and what it is used for |
-| `data/Budområder.zip`, `data/NVE_Region.zip`, `data/Norge_N5000.zip` | Shapefiles from NVE Atlas: price areas, NVE regions (merged into the VASS areas) and land cover of Norway |
+| `data/areas_EL.geojson`, `data/areas_VASS.geojson`, `data/areas_NO.geojson` | The areas as GeoJSON, made from the shapefiles (Oblig4). Used by the app's maps |
 | `data/weather_cells/` | Downloaded weather per grid cell and time interval, a local cache so a stopped download can continue. **Not in git** |
 | `data/entsoe_flows.parquet` | Local backup of the ENTSO-E download in Oblig2. **Not in git** |
 | `No_sync/` | Secret files for the notebooks. **Not in git** (see below) |
