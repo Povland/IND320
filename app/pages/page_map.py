@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from utils.controls import area_type_selector, select_area
+from utils.controls import area_type_selector, select_area, week_selector
 from utils.data import (
     available_dates, load_area_shapes, load_filling_at, load_flow_period, load_weekly_flows, load_weekly_weather,
     maps, weather,
@@ -20,13 +20,13 @@ if not weeks:
     st.page_link("pages/page_data_status.py", label="See Data status")
     st.stop()
 
-# The weather variables, how they are shown, and the colours. Temperature is a mean over the period, the rest sums
-WEATHER_VARIABLES = {
-    "temperature_2m": ("Temperature", "°C", ".1f", "RdBu_r"),
-    "precipitation": ("Precipitation", "mm", ".0f", "Blues"),
-    "rain": ("Rain", "mm", ".0f", "Blues"),
-    "snowfall": ("Snowfall", "cm", ".0f", "Purples"),
-    "et0_fao_evapotranspiration": ("Evaporation", "mm", ".0f", "Oranges"),
+# How each weather variable is shown on the map: number format and colours. The names, units and weekly aggregation come from ind320.weather. VARIABLES
+MAP_STYLES = {
+    "temperature_2m": (".1f", "RdBu_r"),
+    "precipitation": (".0f", "Blues"),
+    "rain": (".0f", "Blues"),
+    "snowfall": (".0f", "Purples"),
+    "et0_fao_evapotranspiration": (".0f", "Oranges"),
 }
 PERIODS = {1: "1 week", 4: "4 weeks", 13: "13 weeks (a quarter)", 26: "26 weeks", 52: "52 weeks (a year)"}
 
@@ -68,8 +68,8 @@ with flow_column:
     flow_note = st.empty()
 with weather_column:
     if colour_by == "Weather":
-        variable = st.selectbox("Weather property", list(WEATHER_VARIABLES),
-                                format_func=lambda v: WEATHER_VARIABLES[v][0], key="map_weather_variable")
+        variable = st.selectbox("Weather property", list(weather.VARIABLES),
+                                format_func=lambda v: weather.VARIABLES[v]["name"], key="map_weather_variable")
         n_weeks = st.selectbox("Over the last", list(PERIODS), index=1, format_func=PERIODS.get,
                                key="map_weather_weeks", help="The weather is aggregated over this many weeks, "
                                "ending in the chosen week: temperature as a mean, the rest as a sum.")
@@ -78,32 +78,18 @@ shapes = load_area_shapes(area_type)
 area_numbers = shapes["area_nr"].tolist()
 
 
-# The week slider. The chosen week is shared with the Forecast page (its last week of training) through
-# st.session_state["selected_week"], but only when the user moves the slider, so switching between filling degree
-# and weather (which offer different weeks) doesn't change the Forecast page by itself
-def share_week(widget_key):
-    st.session_state["selected_week"] = st.session_state[widget_key]
-
-
-def week_slider(widget_key, options, help_text):
-    if st.session_state.get(widget_key) not in options:
-        shared_week = st.session_state.get("selected_week")
-        st.session_state[widget_key] = shared_week if shared_week in options else options[-1]
-    return st.select_slider("Week", options=options, key=widget_key, on_change=share_week, args=(widget_key,),
-                            format_func=lambda date: f"{date:%d.%m.%Y}", help=help_text)
-
-
 # ---------------------------------------------------------------------------------------------
 # The values to colour by, one per area, and a fixed colour scale
 # ---------------------------------------------------------------------------------------------
 if colour_by == "Filling degree":
-    week = week_slider("map_week", weeks, "Any week since 1995. Shared with the Forecast page.")
+    week = week_selector("map_week", weeks, "Any week since 1995. Shared with the Forecast page.")
     values, shown_week = load_filling_at(area_type, week)
     label, value_format, colorscale, zmin, zmax, unit = "Filling degree", ".0%", "Blues", 0, 1, ""
     caption = f"Filling degree in the week ending {shown_week:%d.%m.%Y}." if shown_week is not None else ""
 
 else:
-    name, unit, value_format, colorscale = WEATHER_VARIABLES[variable]
+    name, unit = weather.VARIABLES[variable]["name"], weather.VARIABLES[variable]["unit"]
+    value_format, colorscale = MAP_STYLES[variable]
     how = weather.WEEKLY_AGGREGATION[variable]
 
     # Each area's weekly weather aggregated over the last n_weeks (a rolling mean or sum), so every stored week has
@@ -128,7 +114,7 @@ else:
 
     # Only the weeks with weather stored can be chosen
     weather_weeks = [timestamp.date() for timestamp in table.index]
-    week = week_slider("map_weather_week", weather_weeks,
+    week = week_selector("map_weather_week", weather_weeks,
                        f"Only the weeks with weather stored ({weather_weeks[0]:%d.%m.%Y} to "
                        f"{weather_weeks[-1]:%d.%m.%Y}). Shared with the Forecast page.")
     values = table.loc[pd.Timestamp(week)].dropna().to_dict()

@@ -1,7 +1,9 @@
 import streamlit as st
 
-from utils.controls import area_type_selector, single_area_selector
-from utils.data import run_forecast, available_area_numbers, available_dates, forecast, load_filling_series, load_weekly_weather
+from utils.controls import area_type_selector, single_area_selector, week_selector
+from utils.data import (
+    available_area_numbers, available_dates, forecast, load_filling_series, load_weekly_weather, run_forecast, weather,
+)
 
 st.title("Forecast")
 st.write(
@@ -9,15 +11,6 @@ st.write(
     "The model learns from the chosen history week by week, then forecasts the coming weeks dynamically: "
     "each forecast is used as input for the next week. Weather can be added as exogenous variables."
 )
-
-# The weather variables that can be used, with how they are summed up per week
-WEATHER_VARIABLES = {
-    "temperature_2m": "Temperature (weekly mean, °C)",
-    "precipitation": "Precipitation (weekly sum, mm)",
-    "rain": "Rain (weekly sum, mm)",
-    "snowfall": "Snowfall (weekly sum, cm)",
-    "et0_fao_evapotranspiration": "Evaporation (weekly sum, mm)",
-}
 
 # ---------------------------------------------------------------------------------------------
 # The area: local choices, starting from the sidebar's choice on the other pages
@@ -48,23 +41,13 @@ if filling.empty:
 # ---------------------------------------------------------------------------------------------
 st.subheader("Training period and horizon")
 
-# Starts on the shared week if there is one, otherwise on the latest week. Set before the slider is drawn
-# (not with value=), to avoid Streamlit's warning about a widget getting its value twice
-if st.session_state.get("forecast_train_end") not in weeks:
-    shared_week = st.session_state.get("selected_week")
-    st.session_state["forecast_train_end"] = shared_week if shared_week in weeks else weeks[-1]
-
-
-def share_week():
-    st.session_state["selected_week"] = st.session_state["forecast_train_end"]
-
-
-train_end = st.select_slider(
-    "Last week of training", options=weeks, key="forecast_train_end", on_change=share_week,
-    format_func=lambda date: f"{date:%d.%m.%Y}",
-    help="The forecast starts the week after. Choose an earlier week to compare the forecast with what really "
-         "happened (a backtest). Shared with Map of Norway.",
+train_end = week_selector(
+    "forecast_train_end", weeks, label="Last week of training",
+    help_text="The forecast starts the week after. Choose an earlier week to compare the forecast with what really "
+              "happened (a backtest). Shared with Map of Norway.",
 )
+
+
 left, right = st.columns(2)
 history_years = left.slider(
     "Length of history (years)", min_value=2, max_value=30, value=10, key="forecast_history_years",
@@ -85,7 +68,8 @@ if area_type == "NO":
 else:
     left, right = st.columns([3, 1])
     chosen = left.multiselect(
-        "Weather variables", options=list(WEATHER_VARIABLES), format_func=WEATHER_VARIABLES.get,
+    "Weather variables", options=list(weather.VARIABLES),
+        format_func=lambda v: weather.variable_label(v, weekly=True),
         key="forecast_exog", placeholder="None (filling degree only)",
         help="Weekly weather for the area, used as extra inputs to the model. The training can then only use "
              "the weeks where the weather is stored.",
@@ -150,7 +134,7 @@ except ValueError as error:
     st.warning(str(error))
     st.stop()
 
-exog_text = ", ".join(WEATHER_VARIABLES[c].split(" (")[0].lower() for c in info["exog_columns"]) or "no weather"
+exog_text = ", ".join(weather.VARIABLES[c]["name"].lower() for c in info["exog_columns"]) or "no weather"
 fig = forecast.forecast_figure(result, info, title=f"{label}: forecast of the filling degree ({exog_text})")
 st.plotly_chart(fig, width="stretch")
 

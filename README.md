@@ -66,7 +66,6 @@ It is shown at the bottom of the sidebar and on the About page.
 | `notebooks/Oblig3.ipynb` | Part 3: areas and random locations, weather from Open-Meteo, SPC, LOF, STL, spectrogram and maps |
 | `notebooks/Oblig3.html` | Oblig3 exported as HTML |
 | `notebooks/Oblig4.ipynb` | Part 4: Norges Bank's currency API, time zones, GeoJSON, the SARIMAX forecast with River and its tests, the app's structure |
-| `notebooks/screenshot_entsoe_unexpected_error.png` | Screenshot of an ENTSO-E error, shown in the Oblig2 log |
 | `src/ind320/` | All the logic, used by both the notebooks and the app. Installed as a package with `uv sync` |
 | `src/ind320/nve.py` | NVE's Magasinstatistikk API |
 | `src/ind320/entsoe.py` | ENTSO-E's API, and storing the flows in MongoDB as monthly documents (the app's update) |

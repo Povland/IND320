@@ -4,23 +4,15 @@ from utils.about import weather_data_info
 from utils.controls import area_type_selector, single_area_selector, year_selector
 from utils.data import (
     DEFAULT_POINTS, POINT_OPTIONS, anomalies, available_area_numbers, available_weather_years,
-    load_area_shape, load_region_cells, load_region_weather, maps, weather_years,
+    load_area_shape, load_region_cells, load_region_weather, maps, weather, weather_years,
 )
 from utils.updates import weather_panel
 
-WEATHER_VARIABLES = {
-    "temperature_2m": ("Temperature", "°C"),
-    "precipitation": ("Precipitation", "mm"),
-    "rain": ("Rain", "mm"),
-    "snowfall": ("Snowfall", "cm"),
-    "et0_fao_evapotranspiration": ("Evaporation", "mm"),
-}
-AMOUNTS = {"precipitation", "rain", "snowfall", "et0_fao_evapotranspiration"}
-# Dropdown for one weather property. Local: each tab has its own key, so they are remembered separately
+# Dropdown for one weather property (names from ind320.weather.VARIABLES). Local: each tab has its own key,
+# so they are remembered separately
 def variable_selector(key, default):
-    return st.selectbox("Weather property", list(WEATHER_VARIABLES), index=list(WEATHER_VARIABLES).index(default),
-                        format_func=lambda v: WEATHER_VARIABLES[v][0], key=key)
-
+    return st.selectbox("Weather property", list(weather.VARIABLES), index=list(weather.VARIABLES).index(default),
+                        format_func=lambda v: weather.VARIABLES[v]["name"], key=key)
 
 st.title("Weather Outliers")
 st.write(
@@ -122,7 +114,7 @@ with spc_tab:
     variable_column, cutoff_column, std_column = st.columns(3)
     with variable_column:
         spc_variable = variable_selector("spc_variable", "temperature_2m")
-    spc_name, spc_unit = WEATHER_VARIABLES[spc_variable]
+        spc_name, spc_unit = weather.VARIABLES[spc_variable]["name"], weather.VARIABLES[spc_variable]["unit"]
     cutoff_days = cutoff_column.slider(
         "DCT cut-off (days)", min_value=7, max_value=180, value=30, step=1, key="spc_cutoff",
         help="Variation slower than this counts as season and is removed before the boundaries are found.",
@@ -145,7 +137,7 @@ with spc_tab:
     columns[3].metric("Robust std", f"{summary['satv_robust_std']:.3f} {spc_unit}")
 
     # The amounts can't be negative and have long tails, which SPC's symmetric boundaries don't fit well
-    if spc_variable in AMOUNTS:
+    if spc_variable in weather.AMOUNTS:
         st.caption(
             f"{spc_name} can't be negative, so the lower boundary is rarely crossed, and the long tail of the "
             "large values gives many more outliers than SPC expects for normally distributed data. One event can "
@@ -167,7 +159,7 @@ with lof_tab:
     variable_column, share_column, neighbours_column = st.columns(3)
     with variable_column:
         lof_variable = variable_selector("lof_variable", "precipitation")
-    lof_name, lof_unit = WEATHER_VARIABLES[lof_variable]
+        lof_name, lof_unit = weather.VARIABLES[lof_variable]["name"], weather.VARIABLES[lof_variable]["unit"]
     contamination_percent = share_column.slider(
         "Share of anomalies (%)", min_value=0.1, max_value=10.0, value=1.0, step=0.1, key="lof_contamination",
         help="LOF always marks this share of the hours: it ranks the hours, but doesn't decide whether any are unusual.",

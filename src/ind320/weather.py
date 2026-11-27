@@ -228,14 +228,30 @@ def migrate_weather_documents(db):
 
 
 
-# How each variable is summed up over a day and a week: temperature as a mean, the amounts (mm, cm) as sums
-WEEKLY_AGGREGATION = {
-    "temperature_2m": "mean",
-    "precipitation": "sum",
-    "rain": "sum",
-    "snowfall": "sum",
-    "et0_fao_evapotranspiration": "sum",
+# The weather variables, defined once for the whole project: the name shown, the unit, and how a day and a week are
+# summed up (temperature as a mean, the amounts as sums). The pages and the weekly aggregation all read from here
+VARIABLES = {
+    "temperature_2m": {"name": "Temperature", "unit": "°C", "weekly": "mean"},
+    "precipitation": {"name": "Precipitation", "unit": "mm", "weekly": "sum"},
+    "rain": {"name": "Rain", "unit": "mm", "weekly": "sum"},
+    "snowfall": {"name": "Snowfall", "unit": "cm", "weekly": "sum"},
+    "et0_fao_evapotranspiration": {"name": "Evaporation", "unit": "mm", "weekly": "sum"},
 }
+
+# How each variable is summed up over a day and a week, and the amounts (which can't be negative)
+WEEKLY_AGGREGATION = {variable: info["weekly"] for variable, info in VARIABLES.items()}
+AMOUNTS = [variable for variable, info in VARIABLES.items() if info["weekly"] == "sum"]
+
+
+# The label of a variable: "Precipitation (mm)" for hourly values, "Precipitation (mm per week)" or
+# "Temperature (°C, weekly mean)" for weekly values
+def variable_label(variable, weekly=False):
+    info = VARIABLES[variable]
+    if not weekly:
+        return f"{info['name']} ({info['unit']})"
+    if info["weekly"] == "mean":
+        return f"{info['name']} ({info['unit']}, weekly mean)"
+    return f"{info['name']} ({info['unit']} per week)"
 
 # NVE's weeks are Norwegian ISO weeks, Monday to Sunday, with the Sunday as date_id
 WEEK_TIMEZONE = "Europe/Oslo"

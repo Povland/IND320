@@ -1,10 +1,10 @@
 import plotly.express as px
 import streamlit as st
 
-from ind320 import correlation
 from utils.controls import get_global_selection, single_area_selector
 from utils.data import (
-    load_reservoir_period, load_weekly_weather, run_lag_correlations, run_sliding_correlation, seasonal,
+    correlation, load_reservoir_period, load_weekly_weather, run_lag_correlations, run_sliding_correlation, seasonal,
+    weather,
 )
 
 st.title("Weather vs reservoirs")
@@ -14,14 +14,7 @@ st.write(
     "The weather can be lagged, since rain and snowmelt take time to reach the reservoirs."
 )
 
-# The weather properties (weekly: temperature as a mean, the rest as sums) and the reservoir variables
-WEATHER_VARIABLES = {
-    "precipitation": "Precipitation (mm per week)",
-    "rain": "Rain (mm per week)",
-    "snowfall": "Snowfall (cm per week)",
-    "temperature_2m": "Temperature (°C, weekly mean)",
-    "et0_fao_evapotranspiration": "Evaporation (mm per week)",
-}
+# The reservoir variables. The weather variables come from ind320.weather.VARIABLES
 RESERVOIR_VARIABLES = {
     "filling_degree_change": "Change in filling degree from last week",
     "filling_degree": "Filling degree",
@@ -48,7 +41,10 @@ if not selection["area_numbers"]:
 left, middle, right = st.columns(3)
 with left:
     area_nr = single_area_selector("correlation", area_type, selection["area_numbers"])
-weather_variable = middle.selectbox("Weather property", list(WEATHER_VARIABLES), format_func=WEATHER_VARIABLES.get,
+# Precipitation first: what fills the reservoirs
+weather_variable = middle.selectbox("Weather property", list(weather.VARIABLES),
+                                    index=list(weather.VARIABLES).index("precipitation"),
+                                    format_func=lambda v: weather.variable_label(v, weekly=True),
                                     key="correlation_weather")
 reservoir_variable = right.selectbox("Reservoir variable", list(RESERVOIR_VARIABLES),
                                      format_func=RESERVOIR_VARIABLES.get, key="correlation_reservoir",
@@ -90,8 +86,9 @@ st.caption(f"{label}: {len(aligned)} weeks with both series, {aligned.index[0]:%
            f"{aligned.index[-1]:%d.%m.%Y} (where the stored weather and the sidebar's period overlap).")
 
 fig = correlation.correlation_figure(
-    sliding, aligned, WEATHER_VARIABLES[weather_variable], RESERVOIR_VARIABLES[reservoir_variable], window, lag,
-    title=f"{label}: {WEATHER_VARIABLES[weather_variable].split(' (')[0].lower()} vs "
+    sliding, aligned, weather.variable_label(weather_variable, weekly=True), RESERVOIR_VARIABLES[reservoir_variable],
+    window, lag,
+    title=f"{label}: {weather.VARIABLES[weather_variable]['name'].lower()} vs "
           f"{RESERVOIR_VARIABLES[reservoir_variable].lower()}",
 )
 st.plotly_chart(fig, width="stretch")

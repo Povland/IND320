@@ -225,3 +225,22 @@ def select_area(area_type, area_nr):
     single = st.session_state.setdefault("single_area_memory", {})
     for key in [key for key in single if key.endswith(f"_single_area_{area_type}")]:
         single[key] = area_nr
+
+
+# ---------------------------------------------------------------------------------------------
+# The shared week: Map of Norway's week and the Forecast page's last week of training are the same point in time,
+# stored in st.session_state["selected_week"]. It is only shared when the user moves a slider, so a page that offers
+# other weeks (e.g. the map's weather, only where weather is stored) doesn't change the other page by itself
+# ---------------------------------------------------------------------------------------------
+def week_selector(key, options, help_text, label="Week"):
+    # Starts on the shared week if it is one of the options, otherwise on the latest. Set before the slider is drawn
+    # (not with value=), to avoid Streamlit's warning about a widget getting its value twice
+    if st.session_state.get(key) not in options:
+        shared_week = st.session_state.get("selected_week")
+        st.session_state[key] = shared_week if shared_week in options else options[-1]
+
+    def share():
+        st.session_state["selected_week"] = st.session_state[key]
+
+    return st.select_slider(label, options=options, key=key, on_change=share,
+                            format_func=lambda date: f"{date:%d.%m.%Y}", help=help_text)
