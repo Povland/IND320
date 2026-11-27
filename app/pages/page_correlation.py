@@ -3,7 +3,9 @@ import streamlit as st
 
 from ind320 import correlation
 from utils.controls import get_global_selection, single_area_selector
-from utils.data import load_reservoir_period, load_weekly_weather, seasonal
+from utils.data import (
+    load_reservoir_period, load_weekly_weather, run_lag_correlations, run_sliding_correlation, seasonal,
+)
 
 st.title("Weather vs reservoirs")
 st.write(
@@ -78,7 +80,7 @@ reservoir_series = seasonal.filling_series(reservoirs, area_type, area_nr, colum
 weather_series = weekly[weather_variable]
 
 try:
-    sliding, aligned = correlation.sliding_correlation(weather_series, reservoir_series, window=window, lag=lag)
+    sliding, aligned = run_sliding_correlation(weather_series, reservoir_series, window=window, lag=lag)
 except ValueError as error:
     st.warning(f"{error} The weather is stored from {weekly.index[0]:%d.%m.%Y} to {weekly.index[-1]:%d.%m.%Y}, "
                "so check the period in the sidebar.")
@@ -105,7 +107,7 @@ columns[2].metric("Strongest negative window", f"{sliding.min():+.2f}",
 # Which lag fits best: the correlation over the whole period for lags 0 to 12 weeks
 # ---------------------------------------------------------------------------------------------
 with st.expander("Which lag fits best?"):
-    by_lag = correlation.lag_correlations(weather_series, reservoir_series, max_lag=12).reset_index()
+    by_lag = run_lag_correlations(weather_series, reservoir_series, max_lag=12).reset_index()
     lag_fig = px.bar(by_lag, x="lag_weeks", y="correlation", labels={"lag_weeks": "Lag (weeks)",
                      "correlation": "Correlation"}, title="Correlation over the whole period, by lag")
     lag_fig.update_yaxes(range=[-1, 1])

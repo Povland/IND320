@@ -4,9 +4,7 @@ import streamlit as st
 
 from utils.about import reservoir_data_info
 from utils.controls import AREA_TYPES, get_global_selection
-from utils.data import (
-    available_area_numbers, load_animation_shapes, load_reservoir_data, load_reservoir_period, maps, refresh_data,
-)
+from utils.data import load_animation_figure, load_reservoir_data, load_reservoir_period, refresh_data
 from utils.updates import reservoir_panel
 
 st.title("Reservoirs")
@@ -45,38 +43,30 @@ map_tab, plot_tab, data_tab = st.tabs(["Map", "Plot", "Data"])
 # redrawing the page. Coarse outlines and a choice of step keep it smooth. The chosen areas are outlined in orange
 # ---------------------------------------------------------------------------------------------
 with map_tab:
-    with st.spinner("Preparing the map (the first time takes a few seconds)..."):
-        shapes = load_animation_shapes(area_type)
-
-    # One row per week, one column per area: the filling degree of every area of the type, not only the chosen ones
-    all_areas = available_area_numbers(area_type)
-    period = load_reservoir_period(area_type, all_areas, start, end)
-    table = period.pivot_table(index=period.index, columns="area_nr", values="filling_degree")
-
     STEPS = {1: "Every week", 4: "Every 4 weeks", 13: "Every 13 weeks"}
     step = st.radio("Show", list(STEPS), index=1, format_func=STEPS.get, horizontal=True, key="reservoirs_map_step",
                     help="Fewer weeks make a long period play faster. The latest week is always included.")
 
-    if table.empty:
+    # The figure and its table, cached per type, period, step, outlined areas and theme (see utils/data.py)
+    dark = st.context.theme.type == "dark"
+    fig, table = load_animation_figure(
+        area_type, start, end, step, tuple(area_numbers), dark,
+        f"{AREA_TYPES[area_type]}: filling degree, {start:%d.%m.%Y} to {end:%d.%m.%Y}",
+    )
+
+    if fig is None:
         st.warning("No reservoir data in the chosen period.")
     else:
-        # Every step-th week, counted back from the last one, so the latest week is always a frame
-        frames = table.iloc[::-1].iloc[::step].iloc[::-1]
-
         map_column, info_column = st.columns([3, 1], gap="large")
         with map_column:
-            dark = st.context.theme.type == "dark"
-            fig = maps.overview_animation(
-                shapes, frames, selected=area_numbers, label="Filling degree", dark=dark,
-                title=f"{AREA_TYPES[area_type]}: filling degree, {start:%d.%m.%Y} to {end:%d.%m.%Y}",
-            )
             st.plotly_chart(fig, width="stretch", key="reservoirs_map")
 
         # The period and how much the chosen areas changed over it. The week shown on the map is only known in the
         # browser, so the exact value for each week is in the hover
         with info_column:
+            shown = -(-len(table) // step)   # the number of frames: len(table) / step, rounded up
             st.markdown(f"**Period**\n\n### {len(table):,} weeks")
-            st.caption(f"{table.index[0]:%d.%m.%Y} to {table.index[-1]:%d.%m.%Y}, {len(frames):,} shown on the map")
+            st.caption(f"{table.index[0]:%d.%m.%Y} to {table.index[-1]:%d.%m.%Y}, {shown:,} shown on the map")
             for area_nr in area_numbers:
                 values = table[area_nr].dropna() if area_nr in table else pd.Series(dtype=float)
                 if values.empty:
@@ -93,6 +83,7 @@ with map_tab:
             "doesn't reload. The counter shows the ISO year and week. The colour scale is fixed at 0 to 100 %, so "
             "the same colour means the same filling degree in every week. The chosen areas are outlined in orange."
         )
+
 
 # ---------------------------------------------------------------------------------------------
 # Plot: one line per area for the chosen variable (was the Reservoir Plot page)

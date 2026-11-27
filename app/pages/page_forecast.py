@@ -131,8 +131,8 @@ level = right.select_slider("Interval", options=[0.8, 0.9, 0.95], value=0.9, key
                             format_func=lambda value: f"{value:.0%}", disabled=not intervals)
 
 # ---------------------------------------------------------------------------------------------
-# The forecast. Takes well under a second, so it runs on every change. Settings that don't fit the data
-# (too short history, weather missing) give a readable message from forecast_filling instead of a crash
+# The forecast, cached per set of settings (run_forecast in utils/data.py), so going back to a setting is instant.
+# Settings that don't fit the data (too short history, weather missing) give a readable message instead of a crash
 # ---------------------------------------------------------------------------------------------
 try:
     result, info = run_forecast(
