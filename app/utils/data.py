@@ -17,7 +17,7 @@ SRC_PATH = Path(__file__).resolve().parents[2] / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from ind320 import anomalies, areas, entsoe, maps, nve, openmeteo, seasonal, weather
+from ind320 import anomalies, forecast, areas, entsoe, maps, nve, openmeteo, seasonal, weather
 
 # The MongoDB collection with the cross-border flows: written by notebooks/Oblig2.ipynb, and kept up to date by the
 # app (ind320.entsoe). The name comes from the package, so it is only written in one place
@@ -272,6 +272,19 @@ def load_region_weather(area_type, area_nr, year, points_per_area=DEFAULT_POINTS
         return None
 
 
+# One area's weekly weather (weeks ending on Sunday, like NVE's), from all the complete years stored for the area
+# and number of locations. Used as exogenous variables in the forecast. The hourly years are read from the cache
+# (load_region_weather) and joined before they are made weekly, so the week across New Year is complete.
+# Empty table if no complete year is stored
+def load_weekly_weather(area_type, area_nr, points_per_area=DEFAULT_POINTS):
+    years = sorted(available_weather_years(area_type, area_nr, points_per_area))
+    frames = [load_region_weather(area_type, area_nr, year, points_per_area) for year in years]
+    frames = [frame for frame in frames if frame is not None and not frame.empty]
+    if not frames:
+        return pd.DataFrame()
+    return weather.weekly_weather(pd.concat(frames).sort_index())
+
+
 # The years that can be chosen on the weather pages, newest first. Only whole years: ERA5 arrives about 5 days late,
 # so a year counts as complete from about 6 January the year after
 def weather_years():
@@ -460,3 +473,50 @@ def download_missing_weather(missing, points_per_area=DEFAULT_POINTS, progress=N
     finally:
         # Also after an error, so the years that were stored show up right away
         _clear_weather_caches()
+
+
+# The main map (Home): all areas of one type on a map background, coloured transparently by values (a dict or Series
+# from area_nr to a value), with the selected area (an area_nr, or None) outlined thick in orange.
+# Three layers, so every area can be clicked, even one without a value:
+#   1. the outlines of all areas, with a transparent fill (gets the click where there is no value)
+#   2. the values, partly transparent so the map shows through
+#   3. the selected area's outline, which ignores the mouse ("skip"), so a click goes to the layer below
+def selection_map(areas, values, selected=None, title=None, label="Value", value_format=".0%", colorscale="Blues",
+                  zmin=None, zmax=None, height=600, dark=False):
+    geojson, ids = to_geojson(areas)
+    center, zoom = _view(areas, height)
+    transparent = [[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]]
+
+    fig = go.Figure()
+    fig.add_trace(go.Choroplethmap(
+        geojson=geojson, locations=ids, featureidkey="properties.area_id", z=[0] * len(ids),
+        colorscale=transparent, showscale=False, marker_line_width=1, marker_line_color="#8a8f98",
+        hovertemplate="%{location}: no value<extra></extra>", name="Areas",
+    ))
+
+    shown = areas.assign(value=areas["area_nr"].map(values)).dropna(subset=["value"])
+    if not shown.empty:
+        value_geojson, value_ids = to_geojson(shown)
+        fig.add_trace(go.Choroplethmap(
+            geojson=value_geojson, locations=value_ids, featureidkey="properties.area_id", z=shown["value"],
+            zmin=zmin, zmax=zmax, colorscale=colorscale, marker_opacity=0.6,
+            marker_line_width=1, marker_line_color="white",
+            colorbar=dict(title=label, tickformat=value_format),
+            hovertemplate=f"%{{location}}: %{{z:{value_format}}}<extra></extra>", name=label,
+        ))
+
+    chosen = areas[areas["area_nr"] == selected] if selected is not None else areas.iloc[0:0]
+    if not chosen.empty:
+        chosen_geojson, chosen_ids = to_geojson(chosen)
+        fig.add_trace(go.Choroplethmap(
+            geojson=chosen_geojson, locations=chosen_ids, featureidkey="properties.area_id", z=[0],
+            colorscale=transparent, showscale=False, marker_line_width=4, marker_line_color=CELL_COLOR,
+            hoverinfo="skip", name="Selected",
+        ))
+
+    fig.update_layout(
+        title=title, height=height, showlegend=False, clickmode="event+select",
+        map=dict(style="carto-darkmatter" if dark else MAP_STYLE, center=center, zoom=zoom),
+        margin=dict(l=0, r=0, t=40 if title else 0, b=0),
+    )
+    return fig

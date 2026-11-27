@@ -225,3 +225,48 @@ def migrate_weather_documents(db):
 
     collection.create_index(INDEX_KEYS, unique=True)
     return updated
+
+
+
+# How each variable is summed up over a day and a week: temperature as a mean, the amounts (mm, cm) as sums
+WEEKLY_AGGREGATION = {
+    "temperature_2m": "mean",
+    "precipitation": "sum",
+    "rain": "sum",
+    "snowfall": "sum",
+    "et0_fao_evapotranspiration": "sum",
+}
+
+# NVE's weeks are Norwegian ISO weeks, Monday to Sunday, with the Sunday as date_id
+WEEK_TIMEZONE = "Europe/Oslo"
+
+
+# Aggregates each column of frame by rule ("D" or "W-SUN") as WEEKLY_AGGREGATION says.
+# Sums use min_count=1, so a period without any values becomes NaN instead of 0
+def _aggregate(frame, rule):
+    parts = []
+    for column, how in WEEKLY_AGGREGATION.items():
+        if column in frame:
+            resampled = frame[column].resample(rule)
+            parts.append(resampled.mean() if how == "mean" else resampled.sum(min_count=1))
+    return pd.concat(parts, axis=1)
+
+
+# Hourly weather (UTC index, as stored) -> one row per week ending on Sunday, like NVE's date_id.
+# The hours are first moved to Norwegian time, so a week runs Monday 00:00 to Sunday 23:59 local time, as NVE's.
+# It goes through whole days first: with hourly timestamps, "W-SUN" would put Sunday's hours in the next week.
+# Days with fewer than 23 hours (23 is the day the clocks go forward) and weeks with fewer than 7 days are
+# dropped, so the first and last week of a year are only kept when they are complete.
+# The index has no time zone, so it can be joined directly with the reservoir data
+def weekly_weather(hourly):
+    local = hourly.tz_convert(WEEK_TIMEZONE)
+
+    hours_per_day = local.iloc[:, 0].resample("D").count()
+    daily = _aggregate(local, "D")[hours_per_day >= 23]
+
+    days_per_week = daily.iloc[:, 0].resample("W-SUN").count()
+    weekly = _aggregate(daily, "W-SUN")[days_per_week == 7]
+
+    weekly.index = weekly.index.tz_localize(None).normalize()
+    weekly.index.name = "date_id"
+    return weekly

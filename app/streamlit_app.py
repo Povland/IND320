@@ -32,7 +32,7 @@ navigation = st.navigation(pages)
 
 # Pages that use (or are influenced by) the global data selection. It is drawn here, in the entry file,
 # so it is the same widget on every page
-GLOBAL_SELECTION_PAGES = {"reservoirs", "seasonality-spectrum", "weather-outliers"}
+GLOBAL_SELECTION_PAGES = {"reservoirs", "seasonality-spectrum", "weather-outliers", "weather-vs-reservoirs"}
 if navigation.url_path in GLOBAL_SELECTION_PAGES:
     global_selection()
 

@@ -1,6 +1,6 @@
 [project]
 name = "IND320"
-version = "3.00"
+version = "4.00"
 # pyspark 3.5.1 (Oblig2) does not support newer Python versions
 requires-python = ">=3.11,<3.12"
 
@@ -19,6 +19,7 @@ dependencies = [
     "scipy>=1.17.1",
     "scikit-learn",
     "statsmodels",
+    "river>=0.27",
 ]
 
 [dependency-groups]
@@ -29,6 +30,7 @@ notebook = [
     "matplotlib",
     "cassandra-driver",
     "pyspark==3.5.1",
+    "nbformat>=4.2.0",
 ]
 
 [build-system]

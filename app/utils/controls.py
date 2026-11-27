@@ -158,9 +158,14 @@ def single_area_selector(key, area_type, area_numbers):
 
     remembered = memory.get(widget_key)
     if remembered not in area_numbers:
-        chosen_globally = st.session_state.get("area_numbers_memory", {}).get(area_type, [])
-        chosen_globally = [nr for nr in chosen_globally if nr in area_numbers]
-        remembered = chosen_globally[0] if chosen_globally else area_numbers[0]
+        # An area selected on the map (Home) comes first, then the first area ticked in the sidebar
+        selected = st.session_state.get("selected_area")
+        if selected and selected[0] == area_type and selected[1] in area_numbers:
+            remembered = selected[1]
+        else:
+            chosen_globally = st.session_state.get("area_numbers_memory", {}).get(area_type, [])
+            chosen_globally = [nr for nr in chosen_globally if nr in area_numbers]
+            remembered = chosen_globally[0] if chosen_globally else area_numbers[0]
     _restore(widget_key, remembered)
 
     # If the options changed since the widget was last drawn, start again from the remembered area
@@ -196,3 +201,27 @@ def year_selector(key, years, format_func=str):
         st.session_state[memory_key] = st.session_state[widget_key]
 
     return st.selectbox("Year", options=years, format_func=format_func, key=widget_key, on_change=remember)
+
+
+# ---------------------------------------------------------------------------------------------
+# The selected area, from a click on the map (Home) or the dropdown next to it. Stored in st.session_state,
+# so the other pages start from it: the type of area everywhere, the area ticked in the sidebar,
+# and the single-area choice on the analysis pages
+# ---------------------------------------------------------------------------------------------
+def select_area(area_type, area_nr):
+    st.session_state["selected_area"] = (area_type, area_nr)
+
+    # The type of area: the global choice and every page's own memory of it
+    for key in [key for key in st.session_state if str(key).endswith("area_type_memory")]:
+        st.session_state[key] = area_type
+    st.session_state["area_type_memory"] = area_type
+
+    # The sidebar's areas: the selected area is ticked (the others are kept as they were)
+    memory = st.session_state.setdefault("area_numbers_memory", {})
+    if area_type in memory and area_nr not in memory[area_type]:
+        memory[area_type] = sorted([*memory[area_type], area_nr])
+
+    # The analysis pages' single-area choices for this type start again from the selected area
+    single = st.session_state.setdefault("single_area_memory", {})
+    for key in [key for key in single if key.endswith(f"_single_area_{area_type}")]:
+        single[key] = area_nr

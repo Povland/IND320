@@ -158,3 +158,44 @@ def _grid_cells_for(points_per_area, seed):
 # Same shapefiles, same order, same seed: this gives exactly the same cells as build_grid_cells (checked in Oblig3)
 def grid_cells_for(points_per_area=POINTS_PER_AREA, seed=SEED):
     return _grid_cells_for(points_per_area, seed).copy()
+
+
+# One GeoJSON file per type of area in data/, made from the shapefiles by export_geojson
+GEOJSON_FILES = {area_type: f"areas_{area_type}.geojson" for area_type in ["EL", "VASS", "NO"]}
+
+# How much the outlines are simplified, in degrees (0.01° is about 1 km). Keeps the files and the maps light
+GEOJSON_TOLERANCE = 0.01
+
+
+# The areas of one type ready for a map: clipped to land, in latitude and longitude (EPSG:4326) and simplified.
+# "NO" (all of Norway) has no shape of its own, so it is the five price areas merged into one
+def map_shapes(area_type, tolerance=GEOJSON_TOLERANCE):
+    land = land_areas()
+    if area_type == "NO":
+        shapes = land[land["area_type"] == "EL"].dissolve().reset_index(drop=True)
+        shapes["area_type"], shapes["area_nr"] = "NO", 0
+    else:
+        shapes = land[land["area_type"] == area_type].reset_index(drop=True)
+    shapes = shapes[["area_type", "area_nr", "geometry"]].to_crs(4326)
+    shapes["geometry"] = shapes.geometry.simplify(tolerance, preserve_topology=True)
+    return shapes
+
+
+# Converts the shapefiles to one GeoJSON file per type of area in data/. Returns {area_type: path}
+def export_geojson(data_path=DATA_PATH):
+    paths = {}
+    for area_type, file_name in GEOJSON_FILES.items():
+        path = data_path / file_name
+        map_shapes(area_type).to_file(path, driver="GeoJSON")
+        paths[area_type] = path
+    return paths
+
+
+# The areas of one type from the GeoJSON file. If the file isn't there, they are made from the shapefiles instead
+def load_geojson(area_type, data_path=DATA_PATH):
+    path = data_path / GEOJSON_FILES[area_type]
+    if not path.exists():
+        return map_shapes(area_type)
+    shapes = gpd.read_file(path)
+    shapes["area_nr"] = shapes["area_nr"].astype(int)
+    return shapes
