@@ -290,6 +290,14 @@ def weather_years():
     newest = (datetime.now(timezone.utc) - timedelta(days=weather.ERA5_DELAY_DAYS)).year
     return list(range(newest, WEATHER_FIRST_YEAR - 1, -1))
 
+# The years with complete weather data for one area and number of locations, newest first.
+# A stored year that lacks a variable, comes from other API settings or doesn't reach the end of the year
+# (for the current year: is more than a week behind the newest ERA5 data) doesn't count
+def available_weather_years(area_type, area_nr, points_per_area=DEFAULT_POINTS):
+    stored = load_stored_weather()
+    match = ((stored["area_type"] == area_type) & (stored["area_nr"] == area_nr)
+             & (stored["points_per_area"] == points_per_area) & (stored["complete"] == True))
+    return sorted(stored.loc[match, "year"].astype(int).tolist(), reverse=True)
 
 # One area's hourly weather for one year and number of locations. None if it isn't stored.
 # Cached per area, year and number, so switching back and forth doesn't ask MongoDB again
