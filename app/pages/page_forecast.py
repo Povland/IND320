@@ -74,8 +74,10 @@ else:
         help="Weekly weather for the area, used as extra inputs to the model. The training can then only use "
              "the weeks where the weather is stored.",
     )
-    exog_lag = right.slider("Weather lag (weeks)", min_value=0, max_value=8, value=0, key="forecast_exog_lag",
-                            help="Uses the weather this many weeks earlier, e.g. 2: the weather two weeks before.")
+    exog_lag = right.slider("Weather lag (weeks)", min_value=0, max_value=26, value=0, key="forecast_exog_lag",
+                            help="Uses the weather this many weeks earlier, e.g. 12: the snowfall three months before, "
+                                 "when it melts. A long lag shortens the training, since the first weeks have no "
+                                 "earlier weather.")
 
     if chosen and not st.session_state["mongo_status"]["connected"]:
         st.warning("Not connected to MongoDB, so the weather can't be read. The forecast uses the filling degree only.")

@@ -30,13 +30,16 @@ def sliding_correlation(weather, reservoir, window=13, lag=0):
     return correlation.rename("correlation"), aligned
 
 
-# The correlation over the whole period for each lag from 0 to max_lag weeks
-def lag_correlations(weather, reservoir, max_lag=12):
-    values = {}
+# The correlation over the whole period for each lag from 0 to max_lag weeks, with how many weeks each is based on.
+# A longer lag leaves fewer weeks where both series have a value, and around 52 weeks the yearly season comes back
+# (the same week last year), so long lags can show the season rather than an effect of the weather
+def lag_correlations(weather, reservoir, max_lag=52):
+    rows = []
     for lag in range(max_lag + 1):
         aligned = _aligned(weather, reservoir, lag)
-        values[lag] = aligned["weather"].corr(aligned["reservoir"]) if len(aligned) > 2 else float("nan")
-    return pd.Series(values, name="correlation").rename_axis("lag_weeks")
+        correlation = aligned["weather"].corr(aligned["reservoir"]) if len(aligned) > 2 else float("nan")
+        rows.append({"lag_weeks": lag, "correlation": correlation, "weeks": len(aligned)})
+    return pd.DataFrame(rows)
 
 
 # Three panels with a shared time axis: the weather (already lagged, so it lines up with what it is compared with),

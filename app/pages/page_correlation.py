@@ -104,11 +104,22 @@ columns[2].metric("Strongest negative window", f"{sliding.min():+.2f}",
 # Which lag fits best: the correlation over the whole period for lags 0 to 12 weeks
 # ---------------------------------------------------------------------------------------------
 with st.expander("Which lag fits best?"):
-    by_lag = run_lag_correlations(weather_series, reservoir_series, max_lag=12).reset_index()
-    lag_fig = px.bar(by_lag, x="lag_weeks", y="correlation", labels={"lag_weeks": "Lag (weeks)",
-                     "correlation": "Correlation"}, title="Correlation over the whole period, by lag")
+    # Up to a year back. The table already has a column per lag; no reset_index needed
+    by_lag = run_lag_correlations(weather_series, reservoir_series, max_lag=52)
+    lag_fig = px.bar(by_lag, x="lag_weeks", y="correlation", hover_data={"weeks": True},
+                     labels={"lag_weeks": "Lag (weeks)", "correlation": "Correlation", "weeks": "Weeks used"},
+                     title="Correlation over the whole period, by lag (up to a year)")
     lag_fig.update_yaxes(range=[-1, 1])
+    lag_fig.update_xaxes(dtick=4)
     st.plotly_chart(lag_fig, width="stretch")
-    best = by_lag.loc[by_lag["correlation"].abs().idxmax()]
-    st.caption(f"The strongest correlation is at a lag of {int(best['lag_weeks'])} weeks ({best['correlation']:+.2f}). "
-               "A lag that fits well is a candidate for the weather lag on the Forecast page.")
+
+    # The best lag is picked among lags up to 26 weeks: around 52 the yearly season comes back,
+    # which would make the same week last year look like the best lag
+    short = by_lag[by_lag["lag_weeks"] <= 26].dropna(subset=["correlation"])
+    best = short.loc[short["correlation"].abs().idxmax()]
+    st.caption(
+        f"Up to 26 weeks, the strongest correlation is at a lag of {int(best['lag_weeks'])} weeks "
+        f"({best['correlation']:+.2f}, from {int(best['weeks'])} weeks). Longer lags use fewer weeks (see the hover), "
+        "and around 52 weeks the yearly season comes back, so a strong value there can be the season rather than "
+        "an effect of the weather. A lag that fits well is a candidate for the weather lag on the Forecast page."
+    )

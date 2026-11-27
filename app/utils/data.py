@@ -586,7 +586,7 @@ def run_sliding_correlation(weather_series, reservoir_series, window, lag):
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=100)
-def run_lag_correlations(weather_series, reservoir_series, max_lag=12):
+def run_lag_correlations(weather_series, reservoir_series, max_lag=52):
     return correlation.lag_correlations(weather_series, reservoir_series, max_lag=max_lag)
 
 
