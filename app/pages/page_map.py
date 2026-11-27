@@ -12,6 +12,13 @@ st.write(
     "The areas of one type, coloured by the filling degree or a weather property in the chosen week. "
     "Click an area to select it: the other pages start from the selected area."
 )
+# Without NVE's data there are no weeks to choose, so the page stops with a message (the rest of the app still works)
+weeks = available_dates()
+if not weeks:
+    st.warning("The reservoir data could not be fetched from NVE right now, so the map can't be drawn. "
+               "Try again in a moment, or see Data status.")
+    st.page_link("pages/page_data_status.py", label="See Data status")
+    st.stop()
 
 # The weather variables, how they are shown, and the colours. Temperature is a mean over the period, the rest sums
 WEATHER_VARIABLES = {
@@ -49,9 +56,12 @@ type_column, colour_column, flow_column, weather_column = st.columns(4)
 with type_column:
     area_type = area_type_selector("map", horizontal=False)
 with colour_column:
-    # No weather for all of Norway, so NO can only be coloured by the filling degree
-    colour_options = ["Filling degree"] if area_type == "NO" else ["Filling degree", "Weather"]
+    # No weather for all of Norway, and none without the database, so then only the filling degree can be chosen
+    weather_possible = area_type != "NO" and connected
+    colour_options = ["Filling degree", "Weather"] if weather_possible else ["Filling degree"]
     colour_by = st.radio("Colour by", colour_options, key="map_colour_by")
+    if area_type != "NO" and not connected:
+        st.caption("Weather needs the database, which is not connected.")
 with flow_column:
     show_flow = st.toggle("Show cross-border flow", key="map_show_flow", help=flow_help, disabled=not connected)
     # Filled in further down, once the week is known: a note if the week has no flow
@@ -87,7 +97,7 @@ def week_slider(widget_key, options, help_text):
 # The values to colour by, one per area, and a fixed colour scale
 # ---------------------------------------------------------------------------------------------
 if colour_by == "Filling degree":
-    week = week_slider("map_week", available_dates(), "Any week since 1995. Shared with the Forecast page.")
+    week = week_slider("map_week", weeks, "Any week since 1995. Shared with the Forecast page.")
     values, shown_week = load_filling_at(area_type, week)
     label, value_format, colorscale, zmin, zmax, unit = "Filling degree", ".0%", "Blues", 0, 1, ""
     caption = f"Filling degree in the week ending {shown_week:%d.%m.%Y}." if shown_week is not None else ""
@@ -98,19 +108,23 @@ else:
 
     # Each area's weekly weather aggregated over the last n_weeks (a rolling mean or sum), so every stored week has
     # a value. One column per area, one row per week
-    aggregated = {}
+    aggregated, failed = {}, []
     for area_nr in area_numbers:
-        weekly = load_weekly_weather(area_type, area_nr)
+        weekly = load_weekly_weather(area_type, area_nr, show_error=False)
         if weekly.empty or variable not in weekly:
+            failed.append(area_nr)
             continue
         rolling = weekly[variable].asfreq("W-SUN").rolling(n_weeks, min_periods=n_weeks)
         aggregated[area_nr] = rolling.mean() if how == "mean" else rolling.sum()
     table = pd.DataFrame(aggregated).dropna(how="all")
 
+    # One message for all areas without weather, instead of one per area
     if table.empty:
-        st.warning("No weather is stored for these areas yet.")
-        st.page_link("pages/page_data_status.py", label="Download weather on Data status")
+        st.warning("No weather could be read for these areas: either none is stored yet, or MongoDB didn't answer.")
+        st.page_link("pages/page_data_status.py", label="Check and download weather on Data status")
         st.stop()
+    if failed:
+        st.caption(f"No weather for {', '.join(f'{area_type} {nr}' for nr in failed)}: they are drawn as outlines only.")
 
     # Only the weeks with weather stored can be chosen
     weather_weeks = [timestamp.date() for timestamp in table.index]

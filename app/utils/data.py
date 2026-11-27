@@ -38,11 +38,12 @@ def _fetch_reservoir_data():
 
 
 # All reservoir statistics from NVE's API (all areas, all weeks).
-# Shows an error in the app and returns an empty table if the download fails
+# Shows an error in the app and returns an empty table if the download fails: the network, NVE being down,
+# or an answer that can't be read
 def load_reservoir_data():
     try:
         return _fetch_reservoir_data()
-    except requests.RequestException as error:
+    except Exception as error:
         st.error(f"Could not fetch data from NVE: {error}")
         return pd.DataFrame()
 
@@ -323,12 +324,14 @@ def _fetch_weekly_weather(area_type, area_nr, points_per_area):
     return weather.weekly_weather(pd.concat(frames).sort_index())
 
 
-# The same, with a readable message instead of a crash if MongoDB can't be read. Empty table then
-def load_weekly_weather(area_type, area_nr, points_per_area=DEFAULT_POINTS):
+# The same, with a readable message instead of a crash if MongoDB can't be read. Empty table then.
+# show_error=False leaves the message to the page, e.g. the map, which loads every area and shows one message for all
+def load_weekly_weather(area_type, area_nr, points_per_area=DEFAULT_POINTS, show_error=True):
     try:
         return _fetch_weekly_weather(area_type, area_nr, points_per_area)
     except Exception as error:
-        st.error(f"Could not read the weather for {weather.region_id(area_type, area_nr)} from MongoDB: {error}")
+        if show_error:
+            st.error(f"Could not read the weather for {weather.region_id(area_type, area_nr)} from MongoDB: {error}")
         return pd.DataFrame()
 
 

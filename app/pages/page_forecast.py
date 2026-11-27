@@ -29,11 +29,12 @@ with right:
     area_nr = single_area_selector("forecast", area_type, available_area_numbers(area_type))
 label = f"{area_type} {area_nr}"
 
-# The whole history of the area, straight from NVE (cached). The training period is chosen below
+# Without NVE's data there is nothing to forecast, so the page stops with a message (the rest of the app still works)
 weeks = available_dates()
-filling = load_filling_series(area_type, area_nr, weeks[0], weeks[-1])
-if filling.empty:
-    st.warning(f"No reservoir data for {label}.")
+if not weeks:
+    st.warning("The reservoir data could not be fetched from NVE right now, so there is nothing to forecast. "
+               "Try again in a moment, or see Data status.")
+    st.page_link("pages/page_data_status.py", label="See Data status")
     st.stop()
 
 # ---------------------------------------------------------------------------------------------

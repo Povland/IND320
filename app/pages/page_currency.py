@@ -40,6 +40,11 @@ if rates.empty:
     st.stop()
 rates = rates[currencies]
 
+# Norges Bank sometimes lacks a rate for a business day. Those days are shown as gaps in the line, not as zeros
+missing = int(rates.isna().sum().sum())
+if missing:
+    st.caption(f"{missing} values are missing in Norges Bank's data for this period. They are shown as gaps in the plot.")
+
 # ---------------------------------------------------------------------------------------------
 # The plot: one line per currency
 # ---------------------------------------------------------------------------------------------

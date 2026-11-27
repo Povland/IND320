@@ -90,4 +90,13 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 
-navigation.run()
+# Runs the chosen page. Anything unexpected is caught here, so the page shows a readable message instead of a
+# traceback, and the menu and the other pages keep working. The details are kept in a closed box for debugging.
+# Streamlit's own st.stop() and st.rerun() are BaseExceptions, not Exceptions, so they are not caught
+try:
+    navigation.run()
+except Exception as error:
+    st.error("Something went wrong on this page. The rest of the app still works: choose another page in the menu, "
+             "or try again. If it keeps happening, check Data status.")
+    with st.expander("Details (for debugging)"):
+        st.exception(error)
